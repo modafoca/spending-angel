@@ -43,10 +43,22 @@
       const url = chrome.runtime.getURL(`sounds/${state.selectedSound || "stop.mp3"}`);
       const audio = new Audio(url);
       audio.volume = Math.max(0, Math.min(1, state.volume ?? 0.7));
-      // .play() returns a promise that rejects if autoplay is blocked or the
-      // file is missing/empty. Log so we can tell the difference; the visual
-      // still fires either way.
-      audio.play().catch(err => console.warn("[Spending Angel] audio.play() rejected:", err.name, err.message));
+      audio.play().catch(err => {
+        // On a fresh tab, the page-load trigger fires before any user gesture,
+        // so Chrome's autoplay policy rejects with NotAllowedError. Queue one
+        // retry on the next click/keypress so the sound still lands.
+        if (err.name === "NotAllowedError") {
+          const retry = () => {
+            audio.play().catch(() => {});
+            window.removeEventListener("pointerdown", retry, true);
+            window.removeEventListener("keydown", retry, true);
+          };
+          window.addEventListener("pointerdown", retry, { once: true, capture: true });
+          window.addEventListener("keydown", retry, { once: true, capture: true });
+        } else {
+          console.warn("[Spending Angel] audio.play() rejected:", err.name, err.message);
+        }
+      });
     } catch (e) {
       console.warn("[Spending Angel] audio setup failed:", e);
     }
