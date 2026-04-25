@@ -44,9 +44,12 @@
       const audio = new Audio(url);
       audio.volume = Math.max(0, Math.min(1, state.volume ?? 0.7));
       // .play() returns a promise that rejects if autoplay is blocked or the
-      // file is missing/empty. Either way: stay silent and keep the visual.
-      audio.play().catch(() => {});
-    } catch (_) {}
+      // file is missing/empty. Log so we can tell the difference; the visual
+      // still fires either way.
+      audio.play().catch(err => console.warn("[Spending Angel] audio.play() rejected:", err.name, err.message));
+    } catch (e) {
+      console.warn("[Spending Angel] audio setup failed:", e);
+    }
   }
 
   function escapeHtml(s) {
