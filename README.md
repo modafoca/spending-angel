@@ -87,6 +87,10 @@ The popup writes here. The content script reads on load and listens for `chrome.
 - Multiple goals, custom sound upload, Firefox port.
 - Chrome Web Store submission. Personal install for now.
 
+## Design handoff
+
+Popup wireframes in Figma are placeholders — see `spending-angel-design-spec.md` for design intent. Replace shapes with final art, keep layer names consistent with the data model in `characters.js`.
+
 ## License
 
 MIT. See `LICENSE`.
