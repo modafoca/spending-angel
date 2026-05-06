@@ -1,0 +1,14 @@
+name: SPENDING ANGEL
+codename: null
+tier: experiment
+status: building
+completion: 35
+stack: Chrome extension
+role: Browser guardian that interrupts impulse buys with humor
+next_action: Graphics and UI work — demo is in place, ship-ready surface next
+effort: focused
+blocker: None
+waiting_on: null
+notes: Demo built. Working through visual design and UI for the four character voices (Angel, Dominican Papi, Wizard, Asian Mom).
+github: https://github.com/modafoca/spending-angel
+updated: 2026-05-06
