@@ -1,0 +1,72 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Comic Neue", "Comic Sans MS", "Marker Felt", system-ui, sans-serif;
+  background: #fff7e6;
+  color: #1d2f57;
+  width: 320px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px 8px;
+}
+.header .logo { font-size: 28px; }
+.header h1 { font-size: 18px; margin: 0; font-weight: 800; }
+.header .sub { font-size: 11px; margin: 2px 0 0; opacity: 0.7; }
+
+.panel {
+  padding: 12px 18px;
+  border-top: 2px dashed rgba(29, 47, 87, 0.2);
+}
+.panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px;
+}
+
+.intent {
+  margin: 0;
+  background: #fff;
+  border: 2px solid #1d2f57;
+  border-radius: 8px;
+  padding: 10px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #1d2f57;
+}
+
+.hint { margin: 8px 0 0; font-size: 11px; opacity: 0.7; }
+.hint code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  background: rgba(29, 47, 87, 0.08);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.ghost-btn {
+  font: inherit;
+  background: transparent;
+  border: 2px solid #1d2f57;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: #1d2f57;
+  width: 100%;
+  font-weight: 700;
+}
+.ghost-btn:hover { background: #1d2f57; color: #fff7e6; }
+
+.footer {
+  text-align: center;
+  font-size: 10px;
+  opacity: 0.55;
+  padding: 8px 12px 14px;
+}
