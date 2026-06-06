@@ -6,20 +6,16 @@ final class AudioPlayer {
     static let shared = AudioPlayer()
     private var player: AVAudioPlayer?
 
-    /// Plays a random Angel catch-line. Looks for
-    /// Resources/voice/angel/catch-{1,2,3}.mp3 in the module bundle. Ian drops
-    /// his real ElevenLabs recordings there; until then catch-1.mp3 is a
-    /// placeholder copied from the old extension sound.
-    func playRandomAngelCatch() {
-        let urls = (1...3).compactMap { n in
-            Bundle.module.url(
-                forResource: "catch-\(n)",
-                withExtension: "mp3",
-                subdirectory: "voice/angel"
-            )
-        }
+    /// Plays a random catch-line for the given character. Looks in
+    /// Resources/voice/<character>/catch-{1,2,3}.mp3; falls back to the Angel
+    /// folder (the only one with a placeholder for now). Ian drops real
+    /// ElevenLabs recordings into each character's folder for M-06.
+    func playRandomCatch(for character: CharacterID) {
+        var urls = catchURLs(folder: character.rawValue)
+        if urls.isEmpty { urls = catchURLs(folder: "angel") }   // placeholder fallback
+
         guard let url = urls.randomElement() else {
-            print("[SpendingAngel] no Angel catch-line audio found in bundle")
+            print("[SpendingAngel] no catch-line audio found for \(character.rawValue)")
             return
         }
         do {
@@ -30,6 +26,16 @@ final class AudioPlayer {
             player = p                                 // retain through playback
         } catch {
             print("[SpendingAngel] audio error: \(error)")
+        }
+    }
+
+    private func catchURLs(folder: String) -> [URL] {
+        (1...3).compactMap { n in
+            Bundle.module.url(
+                forResource: "catch-\(n)",
+                withExtension: "mp3",
+                subdirectory: "voice/\(folder)"
+            )
         }
     }
 }

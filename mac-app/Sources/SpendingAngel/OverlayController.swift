@@ -3,25 +3,24 @@ import SwiftUI
 
 /// Owns the full-screen "performance" panel and runs the catch sequence:
 ///
-///   t+0.0  show panel; Angel animates in; clicks intercepted
+///   t+0.0  show panel; character animates in; clicks intercepted
 ///   t+0.1  catch-line plays at full volume
 ///   t+0.5  intercept releases (panel becomes click-through)
 ///   t+4.0  auto-dismiss with an exit animation
 ///
 /// The 0.5s intercept is the "get through me first" gag. After it, the overlay
 /// is click-through so you proceed with your purchase; it fades on its own at 4s.
-/// (See README for the dismiss-interaction note — refine once it's in real use.)
 final class OverlayController {
     private var panel: NSPanel?
     private var model: CatchModel?
     private var autoDismiss: DispatchWorkItem?
 
-    func performCatch(goal: String) {
+    func performCatch(goal: String, character: CharacterID) {
         dismiss(animated: false)                       // never stack two
 
         guard let screen = NSScreen.main else { return }
 
-        let model = CatchModel(goal: goal)
+        let model = CatchModel(goal: goal, emoji: character.placeholderEmoji)
         self.model = model
 
         let panel = NSPanel(
@@ -47,7 +46,7 @@ final class OverlayController {
 
         // Voice ~0.1s in, full volume.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            AudioPlayer.shared.playRandomAngelCatch()
+            AudioPlayer.shared.playRandomCatch(for: character)
         }
 
         // Release the click-intercept after ~0.5s.
