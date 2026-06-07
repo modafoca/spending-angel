@@ -2,14 +2,16 @@ import SwiftUI
 import AppKit
 
 /// The menu-bar dropdown — the "brain." Pixel font + dark/cyan theme.
-/// Guardian grid is 4 characters + 4 "?" coming-soon slots (image-swappable).
-/// The stat box is a FIXED height so switching characters never resizes the window.
+/// Guardian grid is 4 characters + 4 "?" coming-soon slots (image-swappable),
+/// sized to fill the column. Stat box is fixed-height so switching characters
+/// never resizes the window.
 struct DropdownView: View {
     @ObservedObject var store: Store
     var onTest: () -> Void
 
     private let statHeight: CGFloat = 74
-    private let slot: CGFloat = 58
+    private let slot: CGFloat = 66      // 4 × 66 + 3 × 8 = 288 = full inner width
+    private let slotGap: CGFloat = 8
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -62,28 +64,29 @@ struct DropdownView: View {
     }
 
     private var picker: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: slotGap) {
             Text("PICK YOUR GUARDIAN")
                 .font(.pixel(9)).tracking(1).foregroundColor(Theme.pxDim)
-            HStack(spacing: 9) {
+            HStack(spacing: slotGap) {
                 ForEach(CharacterID.allCases) { c in
                     Button { store.activeCharacter = c } label: { avatar(c) }
                         .buttonStyle(.plain)
                         .help(c.displayName)
                 }
             }
-            HStack(spacing: 9) {
+            HStack(spacing: slotGap) {
                 ForEach(0..<4, id: \.self) { _ in comingSoonSlot }
             }
         }
     }
 
     private var shuffleRow: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 9) {
             Toggle("", isOn: $store.shuffleMode)
-                .toggleStyle(.switch).tint(Theme.pxAccent).labelsHidden()
-            Text("SHAKE IT UP 🎲")
+                .toggleStyle(PixelToggleStyle()).labelsHidden()
+            Text("SHAKE IT UP")
                 .font(.pixel(9)).foregroundColor(Theme.pxInk)
+            dieIcon
             Spacer()
         }
     }
@@ -123,16 +126,16 @@ struct DropdownView: View {
             }
             .buttonStyle(.plain)
 
-            HStack {
+            HStack(spacing: 8) {
                 Button(store.isSnoozed ? "WAKE UP" : "SNOOZE 1 HR") {
                     store.isSnoozed ? store.wake() : store.snooze(hours: 1)
                 }
                 .buttonStyle(.plain)
                 .font(.pixel(10)).foregroundColor(Theme.pxInk)
                 Spacer()
-                Toggle("ON", isOn: $store.enabled)
-                    .toggleStyle(.switch).tint(Theme.pxAccent)
-                    .font(.pixel(10)).foregroundColor(Theme.pxInk)
+                Text("ON").font(.pixel(10)).foregroundColor(Theme.pxInk)
+                Toggle("", isOn: $store.enabled)
+                    .toggleStyle(PixelToggleStyle()).labelsHidden()
             }
 
             Button("QUIT") { NSApplication.shared.terminate(nil) }
@@ -143,7 +146,18 @@ struct DropdownView: View {
         }
     }
 
-    // MARK: - Slots
+    // MARK: - Bits
+
+    /// A small drawn die (white, three pips) — replaces the unreadable 🎲 emoji.
+    private var dieIcon: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 3).fill(Theme.pxInk)
+            Circle().fill(Theme.pxBG).frame(width: 3, height: 3).offset(x: -4, y: -4)
+            Circle().fill(Theme.pxBG).frame(width: 3, height: 3)
+            Circle().fill(Theme.pxBG).frame(width: 3, height: 3).offset(x: 4, y: 4)
+        }
+        .frame(width: 16, height: 16)
+    }
 
     private func avatar(_ c: CharacterID) -> some View {
         let selected = store.activeCharacter == c
@@ -151,12 +165,12 @@ struct DropdownView: View {
             if let p = CastAssets.portrait(c) {
                 Image(nsImage: p).interpolation(.none).resizable().scaledToFill()
             } else {
-                Text(c.placeholderEmoji).font(.system(size: 24))
+                Text(c.placeholderEmoji).font(.system(size: 26))
             }
         }
         .frame(width: slot, height: slot)
         .background(Theme.pxPanel)
-        .opacity(selected ? 1 : 0.4)            // dim the unselected
+        .opacity(selected ? 1 : 0.4)
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .overlay(
             RoundedRectangle(cornerRadius: 4)
@@ -165,10 +179,9 @@ struct DropdownView: View {
         .shadow(color: selected ? Theme.pxAccent.opacity(0.75) : .clear, radius: 6)
     }
 
-    /// Generic locked slot — just drop a PNG in to "unlock" a new character later.
     private var comingSoonSlot: some View {
         Text("?")
-            .font(.pixel(22, bold: true))
+            .font(.pixel(24, bold: true))
             .foregroundColor(Theme.pxDim)
             .frame(width: slot, height: slot)
             .background(Theme.pxPanel)
