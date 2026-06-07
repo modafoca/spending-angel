@@ -225,8 +225,8 @@ When complete:
 
 Restyle the dropdown into the pixel-game look from Ian's mockup (dark navy + cyan glow, ornate pixel
 frame, pixel font). **Scope = #3:** reskin our current structure + add shuffle + coming-soon slots;
-**brag stat stays inline; no Settings subpage yet.** Guardian grid = **4 characters + 3 generic "?"
-coming-soon slots** (same size as the others, no names, image-swappable when added). Phased so the
+**brag stat stays inline; no Settings subpage yet.** Guardian grid = **4 characters + 4 generic "?"
+coming-soon slots** (8 total, same size as the others, no names, image-swappable when added). Phased so the
 first three need ZERO new assets; only phase 4 needs Ian's exported frame art.
 
 ### M-07a — Pixel foundation (font + dark/cyan theme)
@@ -240,8 +240,8 @@ first three need ZERO new assets; only phase 4 needs Ian's exported frame art.
 ### M-07b — Shuffle + 7-slot guardian grid
 - **Objective:** add shuffle mode + the coming-soon slots.
 - **Scope:** `Store.shuffleMode` (persisted); "Feeling chaotic? 🎲" toggle; catch picks a random
-  unlocked character when shuffle is on (no immediate repeat). Picker → 7 same-size slots: 4 chars +
-  3 disabled "?" slots (generic question-mark icon, swappable PNG later). Brag stat stays inline.
+  unlocked character when shuffle is on (no immediate repeat). Picker → 8 same-size slots: 4 chars +
+  4 disabled "?" slots (generic question-mark icon, swappable PNG later), laid out 4 + 4. Brag stat stays inline.
 - **Deps:** M-07a. **Deliverable:** functional shuffle + the new grid.
 
 ### M-07c — Pixel chrome in code (approximate)

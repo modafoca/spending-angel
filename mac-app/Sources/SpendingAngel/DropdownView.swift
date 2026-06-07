@@ -1,9 +1,9 @@
 import SwiftUI
 import AppKit
 
-/// The menu-bar dropdown — the "brain." M-07a: pixel font + dark/cyan theme on
-/// the existing structure (shuffle, 7-slot grid, and the ornate frame come in
-/// M-07b/c/d).
+/// The menu-bar dropdown — the "brain." M-07a: pixel font + dark/cyan theme.
+/// Header avatar dropped (it doubled the picker's selection); the active guardian
+/// now reads via a cyan wash + ring in the picker itself.
 struct DropdownView: View {
     @ObservedObject var store: Store
     var onTest: () -> Void
@@ -17,83 +17,71 @@ struct DropdownView: View {
             controls
         }
         .padding(16)
-        .frame(width: 300)
+        .frame(width: 320)
         .background(Theme.pxBG)
     }
 
     // MARK: - Sections
 
     private var header: some View {
-        HStack(spacing: 10) {
-            portrait(store.activeCharacter, size: 40)
-                .overlay(Circle().stroke(Theme.pxAccent, lineWidth: 2))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(store.activeCharacter.displayName)
-                    .font(.pixel(13, bold: true))
-                    .foregroundColor(Theme.pxInk)
-                Text(store.statusText.uppercased())
-                    .font(.pixel(7))
-                    .foregroundColor(store.onDuty ? Theme.pxAccent : Theme.pxDim)
-            }
+        HStack(alignment: .firstTextBaseline) {
+            Text("SPENDING ANGEL")
+                .font(.pixel(13, bold: true))
+                .foregroundColor(Theme.pxInk)
             Spacer()
+            Text(store.statusText.uppercased())
+                .font(.pixel(9))
+                .foregroundColor(store.onDuty ? Theme.pxAccent : Theme.pxDim)
         }
     }
 
     private var goalField: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 7) {
             Text("SAVING FOR")
-                .font(.pixel(7)).tracking(1).foregroundColor(Theme.pxDim)
+                .font(.pixel(9)).tracking(1).foregroundColor(Theme.pxDim)
             TextField("", text: $store.goal,
                       prompt: Text("e.g. Tokyo trip").foregroundColor(Theme.pxDim))
                 .textFieldStyle(.plain)
-                .font(.pixel(13))
+                .font(.pixel(14))
                 .foregroundColor(Theme.pxInk)
-                .padding(.horizontal, 10).padding(.vertical, 8)
+                .padding(.horizontal, 10).padding(.vertical, 9)
                 .background(Theme.pxPanel)
                 .overlay(Rectangle().stroke(Theme.pxLine, lineWidth: 1.5))
         }
     }
 
     private var picker: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 9) {
             Text("PICK YOUR GUARDIAN")
-                .font(.pixel(7)).tracking(1).foregroundColor(Theme.pxDim)
-            HStack(spacing: 8) {
+                .font(.pixel(9)).tracking(1).foregroundColor(Theme.pxDim)
+            HStack(spacing: 9) {
                 ForEach(CharacterID.allCases) { c in
-                    Button { store.activeCharacter = c } label: {
-                        avatar(c)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(store.activeCharacter == c ? Theme.pxAccent : Theme.pxLine,
-                                            lineWidth: store.activeCharacter == c ? 2.5 : 1.5)
-                            )
-                            .shadow(color: store.activeCharacter == c ? Theme.pxAccent.opacity(0.7) : .clear, radius: 5)
-                    }
-                    .buttonStyle(.plain)
-                    .help(c.displayName)
+                    Button { store.activeCharacter = c } label: { avatar(c) }
+                        .buttonStyle(.plain)
+                        .help(c.displayName)
                 }
             }
         }
     }
 
     private var stat: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
             if store.monthlyCount == 0 {
                 Text("No catches yet this month.")
-                    .font(.pixel(8)).foregroundColor(Theme.pxDim)
+                    .font(.pixel(10)).foregroundColor(Theme.pxDim)
             } else {
                 Text(store.activeCharacter.brag(count: store.monthlyCount, goal: store.goal))
-                    .font(.pixel(9)).foregroundColor(Theme.pxInk)
+                    .font(.pixel(11)).foregroundColor(Theme.pxInk)
                     .fixedSize(horizontal: false, vertical: true)
                 if let days = store.streakDays {
                     Text(store.activeCharacter.streak(days: days))
-                        .font(.pixel(7)).foregroundColor(Theme.pxDim)
+                        .font(.pixel(9)).foregroundColor(Theme.pxDim)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
+        .padding(11)
         .background(Theme.pxPanel)
         .overlay(Rectangle().stroke(Theme.pxLine, lineWidth: 1.5))
     }
@@ -102,9 +90,9 @@ struct DropdownView: View {
         VStack(spacing: 12) {
             Button(action: onTest) {
                 Text("▶ TEST THE CATCH")
-                    .font(.pixel(11, bold: true))
+                    .font(.pixel(12, bold: true))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
+                    .padding(.vertical, 12)
                     .background(Theme.pxAccent)
                     .foregroundColor(Theme.pxBG)
             }
@@ -115,44 +103,38 @@ struct DropdownView: View {
                     store.isSnoozed ? store.wake() : store.snooze(hours: 1)
                 }
                 .buttonStyle(.plain)
-                .font(.pixel(8)).foregroundColor(Theme.pxInk)
+                .font(.pixel(10)).foregroundColor(Theme.pxInk)
                 Spacer()
                 Toggle("ON", isOn: $store.enabled)
                     .toggleStyle(.switch).tint(Theme.pxAccent)
-                    .font(.pixel(8)).foregroundColor(Theme.pxInk)
+                    .font(.pixel(10)).foregroundColor(Theme.pxInk)
             }
 
             Button("QUIT") { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.plain)
-                .font(.pixel(7)).foregroundColor(Theme.pxDim)
+                .font(.pixel(9)).foregroundColor(Theme.pxDim)
         }
     }
 
     // MARK: - Bits
 
     private func avatar(_ c: CharacterID) -> some View {
-        Group {
+        let selected = store.activeCharacter == c
+        return Group {
             if let p = CastAssets.portrait(c) {
                 Image(nsImage: p).interpolation(.none).resizable().scaledToFill()
             } else {
-                Text(c.placeholderEmoji).font(.system(size: 22))
+                Text(c.placeholderEmoji).font(.system(size: 24))
             }
         }
-        .frame(width: 54, height: 54)
+        .frame(width: 58, height: 58)
         .background(Theme.pxPanel)
+        .overlay(Theme.pxAccent.opacity(selected ? 0.30 : 0).blendMode(.plusLighter)) // cyan wash on selected
         .clipShape(RoundedRectangle(cornerRadius: 4))
-    }
-
-    private func portrait(_ c: CharacterID, size: CGFloat) -> some View {
-        Group {
-            if let p = CastAssets.portrait(c) {
-                Image(nsImage: p).interpolation(.none).resizable().scaledToFill()
-            } else {
-                Text(c.placeholderEmoji).font(.system(size: size * 0.5))
-            }
-        }
-        .frame(width: size, height: size)
-        .background(Theme.pxPanel)
-        .clipShape(Circle())
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(selected ? Theme.pxAccent : Theme.pxLine, lineWidth: selected ? 2.5 : 1.5)
+        )
+        .shadow(color: selected ? Theme.pxAccent.opacity(0.75) : .clear, radius: 6)
     }
 }
