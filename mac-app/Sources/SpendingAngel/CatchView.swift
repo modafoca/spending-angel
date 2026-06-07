@@ -46,7 +46,7 @@ struct CatchView: View {
     private var character: some View {
         Group {
             if let art = CastAssets.art(model.character) {
-                Image(nsImage: art).resizable().scaledToFit().frame(height: 380)
+                Image(nsImage: art).interpolation(.none).resizable().scaledToFit().frame(height: 380)
             } else {
                 Text(model.character.placeholderEmoji).font(.system(size: 150)) // fallback
             }

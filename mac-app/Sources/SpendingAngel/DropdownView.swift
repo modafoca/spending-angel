@@ -136,7 +136,7 @@ struct DropdownView: View {
     private func avatar(_ c: CharacterID) -> some View {
         Group {
             if let p = CastAssets.portrait(c) {
-                Image(nsImage: p).resizable().scaledToFill()
+                Image(nsImage: p).interpolation(.none).resizable().scaledToFill()
             } else {
                 Text(c.placeholderEmoji).font(.system(size: 22))
             }
@@ -149,7 +149,7 @@ struct DropdownView: View {
     private func portrait(_ c: CharacterID, size: CGFloat) -> some View {
         Group {
             if let p = CastAssets.portrait(c) {
-                Image(nsImage: p).resizable().scaledToFill()
+                Image(nsImage: p).interpolation(.none).resizable().scaledToFill()
             } else {
                 Text(c.placeholderEmoji).font(.system(size: size * 0.5))
             }
