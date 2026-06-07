@@ -1,12 +1,9 @@
 import Foundation
 import Combine
 
-/// The brain's persistent state: goal, active character, on/off, snooze, and the
-/// M-04 stat (monthly catch count + streak). Backed by UserDefaults.
-///
-/// A shared singleton so both the SwiftUI scene and the AppDelegate's bridge
-/// read/write the same instance. The bridge (M-05) calls `recordCatch()` on real
-/// intents, same as "Test the catch" does.
+/// The brain's persistent state: goal, active character, on/off, snooze, shuffle,
+/// and the M-04 stat (monthly catch count + streak). Backed by UserDefaults.
+/// A shared singleton so the SwiftUI scene + the AppDelegate bridge use one instance.
 final class Store: ObservableObject {
     static let shared = Store()
 
@@ -14,12 +11,14 @@ final class Store: ObservableObject {
     @Published var activeCharacter: CharacterID
     @Published var enabled: Bool
     @Published var snoozeUntil: Date?
+    @Published var shuffleMode: Bool          // M-07b — "Shake It Up"
 
     // M-04 — brag stat + streak
     @Published var monthlyCount: Int
-    @Published var countMonth: String              // "yyyy-MM"
+    @Published var countMonth: String          // "yyyy-MM"
     @Published var lastCatchDate: Date?
 
+    private var lastShuffled: CharacterID?     // anti-repeat for shuffle
     private let d = UserDefaults.standard
     private var bag = Set<AnyCancellable>()
 
@@ -29,6 +28,7 @@ final class Store: ObservableObject {
         enabled = d.object(forKey: "enabled") as? Bool ?? true
         let stored = d.object(forKey: "snoozeUntil") as? Date
         snoozeUntil = (stored.map { $0 > Date() } ?? false) ? stored : nil
+        shuffleMode = d.bool(forKey: "shuffleMode")
 
         monthlyCount = d.integer(forKey: "monthlyCount")
         countMonth = d.string(forKey: "countMonth") ?? Store.monthKey(Date())
@@ -38,6 +38,7 @@ final class Store: ObservableObject {
         $activeCharacter.dropFirst().sink { [weak self] in self?.d.set($0.rawValue, forKey: "activeCharacter") }.store(in: &bag)
         $enabled.dropFirst().sink { [weak self] in self?.d.set($0, forKey: "enabled") }.store(in: &bag)
         $snoozeUntil.dropFirst().sink { [weak self] in self?.d.set($0, forKey: "snoozeUntil") }.store(in: &bag)
+        $shuffleMode.dropFirst().sink { [weak self] in self?.d.set($0, forKey: "shuffleMode") }.store(in: &bag)
         $monthlyCount.dropFirst().sink { [weak self] in self?.d.set($0, forKey: "monthlyCount") }.store(in: &bag)
         $countMonth.dropFirst().sink { [weak self] in self?.d.set($0, forKey: "countMonth") }.store(in: &bag)
         $lastCatchDate.dropFirst().sink { [weak self] in self?.d.set($0, forKey: "lastCatchDate") }.store(in: &bag)
@@ -48,8 +49,6 @@ final class Store: ObservableObject {
         return false
     }
 
-    /// Whether a *real* checkout intent (M-05) would perform. The manual "Test
-    /// the catch" button ignores this so you can always demo.
     var onDuty: Bool { enabled && !isSnoozed }
 
     var statusText: String {
@@ -61,22 +60,26 @@ final class Store: ObservableObject {
     func snooze(hours: Double) { snoozeUntil = Date().addingTimeInterval(hours * 3600) }
     func wake() { snoozeUntil = nil }
 
+    /// Which character performs the next catch: the active one normally, or a
+    /// random one (no immediate repeat) when Shake It Up is on.
+    func nextCatchCharacter() -> CharacterID {
+        guard shuffleMode else { return activeCharacter }
+        let pool = CharacterID.allCases.filter { $0 != lastShuffled }
+        let pick = pool.randomElement() ?? activeCharacter
+        lastShuffled = pick
+        return pick
+    }
+
     // MARK: - Stat
 
-    /// Record a catch: bump the monthly count (resetting at month boundaries) and
-    /// reset the streak clock.
     func recordCatch() {
         let now = Date()
         let m = Store.monthKey(now)
-        if m != countMonth {
-            countMonth = m
-            monthlyCount = 0
-        }
+        if m != countMonth { countMonth = m; monthlyCount = 0 }
         monthlyCount += 1
         lastCatchDate = now
     }
 
-    /// Whole days since the last catch ("almost slip"). nil if never caught.
     var streakDays: Int? {
         guard let last = lastCatchDate else { return nil }
         return Calendar.current.dateComponents([.day], from: last, to: Date()).day

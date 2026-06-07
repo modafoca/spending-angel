@@ -1,23 +1,22 @@
 import SwiftUI
 import AppKit
 
-/// The menu-bar dropdown — the "brain." M-07a: pixel font + dark/cyan theme.
-/// The active guardian reads via a cyan wash + ring in the picker (no redundant
-/// header avatar). The stat box is a FIXED height so switching characters never
-/// resizes/shifts the window.
+/// The menu-bar dropdown — the "brain." Pixel font + dark/cyan theme.
+/// Guardian grid is 4 characters + 4 "?" coming-soon slots (image-swappable).
+/// The stat box is a FIXED height so switching characters never resizes the window.
 struct DropdownView: View {
     @ObservedObject var store: Store
     var onTest: () -> Void
 
-    /// Constant height for the stat box — fits the longest brag + streak so the
-    /// window never changes size when you switch character or land your first catch.
     private let statHeight: CGFloat = 74
+    private let slot: CGFloat = 58
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
             goalField
             picker
+            shuffleRow
             stat
             controls
         }
@@ -46,7 +45,7 @@ struct DropdownView: View {
                 .font(.pixel(9)).tracking(1).foregroundColor(Theme.pxDim)
             ZStack(alignment: .leading) {
                 if store.goal.isEmpty {
-                    Text("e.g. Tokyo trip")                       // visible placeholder
+                    Text("e.g. Tokyo trip")
                         .font(.pixel(14))
                         .foregroundColor(Theme.pxInk.opacity(0.4))
                         .allowsHitTesting(false)
@@ -73,6 +72,19 @@ struct DropdownView: View {
                         .help(c.displayName)
                 }
             }
+            HStack(spacing: 9) {
+                ForEach(0..<4, id: \.self) { _ in comingSoonSlot }
+            }
+        }
+    }
+
+    private var shuffleRow: some View {
+        HStack(spacing: 10) {
+            Toggle("", isOn: $store.shuffleMode)
+                .toggleStyle(.switch).tint(Theme.pxAccent).labelsHidden()
+            Text("SHAKE IT UP 🎲")
+                .font(.pixel(9)).foregroundColor(Theme.pxInk)
+            Spacer()
         }
     }
 
@@ -93,7 +105,7 @@ struct DropdownView: View {
             }
             Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, minHeight: statHeight, maxHeight: statHeight, alignment: .topLeading)  // FIXED height
+        .frame(maxWidth: .infinity, minHeight: statHeight, maxHeight: statHeight, alignment: .topLeading)
         .padding(11)
         .background(Theme.pxPanel)
         .overlay(Rectangle().stroke(Theme.pxLine, lineWidth: 1.5))
@@ -123,7 +135,6 @@ struct DropdownView: View {
                     .font(.pixel(10)).foregroundColor(Theme.pxInk)
             }
 
-            // subtle pill
             Button("QUIT") { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.plain)
                 .font(.pixel(9)).foregroundColor(Theme.pxDim)
@@ -132,7 +143,7 @@ struct DropdownView: View {
         }
     }
 
-    // MARK: - Bits
+    // MARK: - Slots
 
     private func avatar(_ c: CharacterID) -> some View {
         let selected = store.activeCharacter == c
@@ -143,14 +154,29 @@ struct DropdownView: View {
                 Text(c.placeholderEmoji).font(.system(size: 24))
             }
         }
-        .frame(width: 58, height: 58)
+        .frame(width: slot, height: slot)
         .background(Theme.pxPanel)
-        .opacity(selected ? 1 : 0.4)            // dim the unselected; no wash on the selected
+        .opacity(selected ? 1 : 0.4)            // dim the unselected
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .overlay(
             RoundedRectangle(cornerRadius: 4)
                 .stroke(selected ? Theme.pxAccent : Theme.pxLine, lineWidth: selected ? 2.5 : 1.5)
         )
         .shadow(color: selected ? Theme.pxAccent.opacity(0.75) : .clear, radius: 6)
+    }
+
+    /// Generic locked slot — just drop a PNG in to "unlock" a new character later.
+    private var comingSoonSlot: some View {
+        Text("?")
+            .font(.pixel(22, bold: true))
+            .foregroundColor(Theme.pxDim)
+            .frame(width: slot, height: slot)
+            .background(Theme.pxPanel)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(Theme.pxLine, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+            )
+            .opacity(0.5)
     }
 }
