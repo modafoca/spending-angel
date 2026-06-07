@@ -41,16 +41,24 @@ struct DropdownView: View {
     // MARK: - Sections
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(store.shuffleMode ? "SHUFFLE" : store.activeCharacter.displayName.uppercased())
-                .font(.pixel(13, bold: true))
-                .foregroundColor(Theme.pxInk)
-                .lineLimit(1)
-            Text(store.statusText.uppercased())
-                .font(.pixel(9))
-                .foregroundColor(store.onDuty ? Theme.pxAccent : Theme.pxDim)
+        HStack(spacing: 10) {
+            Image(nsImage: AppIcons.menuBar)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 22, height: 30)
+                .foregroundStyle(Theme.pxAccent)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(store.shuffleMode ? "SHUFFLE" : store.activeCharacter.displayName.uppercased())
+                    .font(.pixel(13, bold: true))
+                    .foregroundColor(Theme.pxInk)
+                    .lineLimit(1)
+                Text(store.statusText.uppercased())
+                    .font(.pixel(9))
+                    .foregroundColor(store.onDuty ? Theme.pxAccent : Theme.pxDim)
+            }
+            Spacer()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var goalField: some View {
