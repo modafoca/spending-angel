@@ -25,6 +25,18 @@ struct DropdownView: View {
         .padding(16)
         .frame(width: 320)
         .background(Theme.pxBG)
+        .overlay(frameBorder)
+    }
+
+    /// Placeholder pixel frame (double border). Swapped for Ian's ornate 9-slice
+    /// frame art in M-07d.
+    private var frameBorder: some View {
+        ZStack {
+            Rectangle().stroke(Theme.pxLine, lineWidth: 2)
+            Rectangle().stroke(Theme.pxAccent.opacity(0.20), lineWidth: 1).padding(3)
+        }
+        .padding(5)
+        .allowsHitTesting(false)
     }
 
     // MARK: - Sections
@@ -125,6 +137,7 @@ struct DropdownView: View {
                     .background(store.enabled ? Theme.pxAccent : Theme.pxPanel)
                     .foregroundColor(store.enabled ? Theme.pxBG : Theme.pxDim)
                     .overlay(Rectangle().stroke(store.enabled ? Color.clear : Theme.pxLine, lineWidth: 1.5))
+                    .shadow(color: store.enabled ? Theme.pxAccent.opacity(0.55) : .clear, radius: 8)
             }
             .buttonStyle(.plain)
 
