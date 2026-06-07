@@ -41,8 +41,9 @@
     console.log("[SA sensor]", payload);
     chrome.storage.local.set({ lastIntent: payload });
 
-    // TODO M-05: send `payload` over the 127.0.0.1 WebSocket bridge so the
-    // macOS app performs the catch.
+    // Forward to the macOS app via the service worker — it can reach
+    // http://127.0.0.1 without the page's mixed-content / private-network limits.
+    chrome.runtime.sendMessage(payload).catch(() => {});
   }
 
   function isBuyButton(el) {

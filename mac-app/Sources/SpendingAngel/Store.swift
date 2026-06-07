@@ -2,9 +2,14 @@ import Foundation
 import Combine
 
 /// The brain's persistent state: goal, active character, on/off, snooze, and the
-/// M-04 stat (monthly catch count + streak). Backed by UserDefaults. The bridge
-/// (M-05) calls `recordCatch()` on real intents, same as "Test the catch" does.
+/// M-04 stat (monthly catch count + streak). Backed by UserDefaults.
+///
+/// A shared singleton so both the SwiftUI scene and the AppDelegate's bridge
+/// read/write the same instance. The bridge (M-05) calls `recordCatch()` on real
+/// intents, same as "Test the catch" does.
 final class Store: ObservableObject {
+    static let shared = Store()
+
     @Published var goal: String
     @Published var activeCharacter: CharacterID
     @Published var enabled: Bool

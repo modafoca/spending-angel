@@ -64,6 +64,10 @@ body {
 }
 .ghost-btn:hover { background: #1d2f57; color: #fff7e6; }
 
+.status { margin: 0; font-size: 13px; font-weight: 700; }
+.status.ok { color: #1a7f37; }
+.status.bad { color: #b3261e; }
+
 .footer {
   text-align: center;
   font-size: 10px;
