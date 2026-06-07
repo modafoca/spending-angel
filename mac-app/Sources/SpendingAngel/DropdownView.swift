@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 /// The menu-bar dropdown — the "brain." Portrait, editable goal, character
-/// picker, snooze, on/off. (The brag stat + streak land in M-04.)
+/// picker, the brag stat + streak (M-04), snooze, on/off.
 struct DropdownView: View {
     @ObservedObject var store: Store
     var onTest: () -> Void
@@ -14,6 +14,7 @@ struct DropdownView: View {
             header
             goalField
             picker
+            stat
             controls
         }
         .padding(16)
@@ -67,6 +68,31 @@ struct DropdownView: View {
                 .help(c.displayName)
             }
         }
+    }
+
+    // M-04 — the brag stat + streak, in the active character's voice.
+    private var stat: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if store.monthlyCount == 0 {
+                Text("No catches yet this month. So far, so good.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(store.activeCharacter.brag(count: store.monthlyCount, goal: store.goal))
+                    .font(.callout.weight(.semibold))
+                    .foregroundColor(navy)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let days = store.streakDays {
+                    Text(store.activeCharacter.streak(days: days))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.gray.opacity(0.10)))
     }
 
     private var controls: some View {

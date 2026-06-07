@@ -12,6 +12,9 @@ struct SpendingAngelApp: App {
     var body: some Scene {
         MenuBarExtra {
             DropdownView(store: store) {
+                // Manual test fires regardless of on-duty state, but still counts
+                // toward the stat so you can watch the brag climb.
+                store.recordCatch()
                 delegate.overlay.performCatch(goal: store.goal, character: store.activeCharacter)
             }
         } label: {

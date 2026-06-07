@@ -34,4 +34,35 @@ enum CharacterID: String, CaseIterable, Identifiable {
         case .mom:    return "You have one already!"
         }
     }
+
+    /// The brag stat — the character flexes the (real) catch count, anchored to
+    /// the goal where it fits. Written copy, not voiced.
+    func brag(count n: Int, goal: String) -> String {
+        let g = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch self {
+        case .angel:
+            return "I've stopped you \(n) times. You're welcome."
+        case .papi:
+            return g.isEmpty
+                ? "Te he cuidado \(n) veces, mi amor."
+                : "Te he cuidado \(n) veces pa' \(g), mi amor."
+        case .wizard:
+            return g.isEmpty
+                ? "\(n) times I have stayed your hand."
+                : "\(n) times I have stayed your hand. \(g) thanks you."
+        case .mom:
+            return "\(n) times. \(n). And not one thank you."
+        }
+    }
+
+    /// The streak — days since the last "almost slip" (last catch). A catch resets it.
+    func streak(days d: Int) -> String {
+        let day = d == 1 ? "day" : "days"
+        switch self {
+        case .angel:  return "\(d) \(day) clean. Proud of you."
+        case .papi:   return "\(d) \(d == 1 ? "día" : "días") sin resbalar. Así me gusta."
+        case .wizard: return "\(d) \(day) the realm has held. Do not falter now."
+        case .mom:    return "\(d) \(day) good. Don't ruin it."
+        }
+    }
 }
