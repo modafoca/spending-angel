@@ -2,11 +2,16 @@ import SwiftUI
 import AppKit
 
 /// The menu-bar dropdown — the "brain." M-07a: pixel font + dark/cyan theme.
-/// Header avatar dropped (it doubled the picker's selection); the active guardian
-/// now reads via a cyan wash + ring in the picker itself.
+/// The active guardian reads via a cyan wash + ring in the picker (no redundant
+/// header avatar). The stat box is a FIXED height so switching characters never
+/// resizes/shifts the window.
 struct DropdownView: View {
     @ObservedObject var store: Store
     var onTest: () -> Void
+
+    /// Constant height for the stat box — fits the longest brag + streak so the
+    /// window never changes size when you switch character or land your first catch.
+    private let statHeight: CGFloat = 74
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -39,14 +44,21 @@ struct DropdownView: View {
         VStack(alignment: .leading, spacing: 7) {
             Text("SAVING FOR")
                 .font(.pixel(9)).tracking(1).foregroundColor(Theme.pxDim)
-            TextField("", text: $store.goal,
-                      prompt: Text("e.g. Tokyo trip").foregroundColor(Theme.pxDim))
-                .textFieldStyle(.plain)
-                .font(.pixel(14))
-                .foregroundColor(Theme.pxInk)
-                .padding(.horizontal, 10).padding(.vertical, 9)
-                .background(Theme.pxPanel)
-                .overlay(Rectangle().stroke(Theme.pxLine, lineWidth: 1.5))
+            ZStack(alignment: .leading) {
+                if store.goal.isEmpty {
+                    Text("e.g. Tokyo trip")                       // visible placeholder
+                        .font(.pixel(14))
+                        .foregroundColor(Theme.pxInk.opacity(0.4))
+                        .allowsHitTesting(false)
+                }
+                TextField("", text: $store.goal)
+                    .textFieldStyle(.plain)
+                    .font(.pixel(14))
+                    .foregroundColor(Theme.pxInk)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 9)
+            .background(Theme.pxPanel)
+            .overlay(Rectangle().stroke(Theme.pxLine, lineWidth: 1.5))
         }
     }
 
@@ -79,8 +91,9 @@ struct DropdownView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: statHeight, maxHeight: statHeight, alignment: .topLeading)  // FIXED height
         .padding(11)
         .background(Theme.pxPanel)
         .overlay(Rectangle().stroke(Theme.pxLine, lineWidth: 1.5))
@@ -110,9 +123,12 @@ struct DropdownView: View {
                     .font(.pixel(10)).foregroundColor(Theme.pxInk)
             }
 
+            // subtle pill
             Button("QUIT") { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.plain)
                 .font(.pixel(9)).foregroundColor(Theme.pxDim)
+                .padding(.horizontal, 16).padding(.vertical, 6)
+                .overlay(Capsule().stroke(Theme.pxLine, lineWidth: 1.5))
         }
     }
 
@@ -129,7 +145,7 @@ struct DropdownView: View {
         }
         .frame(width: 58, height: 58)
         .background(Theme.pxPanel)
-        .overlay(Theme.pxAccent.opacity(selected ? 0.30 : 0).blendMode(.plusLighter)) // cyan wash on selected
+        .overlay(Theme.pxAccent.opacity(selected ? 0.30 : 0).blendMode(.plusLighter))
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .overlay(
             RoundedRectangle(cornerRadius: 4)
