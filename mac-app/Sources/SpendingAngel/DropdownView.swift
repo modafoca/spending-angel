@@ -2,16 +2,17 @@ import SwiftUI
 import AppKit
 
 /// The menu-bar dropdown — the "brain." Pixel font + dark/cyan theme.
-/// Guardian grid is 4 characters + 4 "?" coming-soon slots (image-swappable),
-/// sized to fill the column. Stat box is fixed-height so switching characters
-/// never resizes the window.
+/// Inputs, boxes and buttons use pixel-stepped rounded corners; the avatar grid
+/// keeps smooth corners. Stat box is fixed-height so switching characters never
+/// resizes the window.
 struct DropdownView: View {
     @ObservedObject var store: Store
     var onTest: () -> Void
 
     private let statHeight: CGFloat = 74
-    private let slot: CGFloat = 66      // 4 × 66 + 3 × 8 = 288 = full inner width
+    private let slot: CGFloat = 66
     private let slotGap: CGFloat = 8
+    private let pxCorner = PixelFrame(step: 2, steps: 3)   // corners for inputs/boxes/buttons
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -28,8 +29,6 @@ struct DropdownView: View {
         .overlay(frameBorder)
     }
 
-    /// Placeholder pixel frame (double border). Swapped for Ian's ornate 9-slice
-    /// frame art in M-07d.
     private var frameBorder: some View {
         ZStack {
             PixelFrame(step: 3, steps: 3).stroke(Theme.pxLine, lineWidth: 2)
@@ -70,8 +69,8 @@ struct DropdownView: View {
                     .foregroundColor(Theme.pxInk)
             }
             .padding(.horizontal, 10).padding(.vertical, 9)
-            .background(Theme.pxPanel)
-            .overlay(Rectangle().stroke(Theme.pxLine, lineWidth: 1.5))
+            .background(pxCorner.fill(Theme.pxPanel))
+            .overlay(pxCorner.stroke(Theme.pxLine, lineWidth: 1.5))
         }
     }
 
@@ -122,26 +121,25 @@ struct DropdownView: View {
         }
         .frame(maxWidth: .infinity, minHeight: statHeight, maxHeight: statHeight, alignment: .topLeading)
         .padding(11)
-        .background(Theme.pxPanel)
-        .overlay(Rectangle().stroke(Theme.pxLine, lineWidth: 1.5))
+        .background(pxCorner.fill(Theme.pxPanel))
+        .overlay(pxCorner.stroke(Theme.pxLine, lineWidth: 1.5))
     }
 
     private var controls: some View {
         VStack(spacing: 12) {
-            // Hero — the master on/off (the real primary, per the mockup).
+            // Hero — master on/off
             Button { store.enabled.toggle() } label: {
                 Text(store.enabled ? "SPENDING ANGEL IS ON" : "SPENDING ANGEL IS OFF")
                     .font(.pixel(12, bold: true))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
-                    .background(store.enabled ? Theme.pxAccent : Theme.pxPanel)
                     .foregroundColor(store.enabled ? Theme.pxBG : Theme.pxDim)
-                    .overlay(Rectangle().stroke(store.enabled ? Color.clear : Theme.pxLine, lineWidth: 1.5))
+                    .background(pxCorner.fill(store.enabled ? Theme.pxAccent : Theme.pxPanel))
+                    .overlay(pxCorner.stroke(store.enabled ? Color.clear : Theme.pxLine, lineWidth: 1.5))
                     .shadow(color: store.enabled ? Theme.pxAccent.opacity(0.55) : .clear, radius: 8)
             }
             .buttonStyle(.plain)
 
-            // Secondary — snooze (real) + a small dev Test (hidden at ship).
             HStack(spacing: 8) {
                 secondaryButton(store.isSnoozed ? "WAKE UP" : "SNOOZE 1 HR") {
                     store.isSnoozed ? store.wake() : store.snooze(hours: 1)
@@ -154,7 +152,7 @@ struct DropdownView: View {
                 .buttonStyle(.plain)
                 .font(.pixel(9)).foregroundColor(Theme.pxDim)
                 .padding(.horizontal, 16).padding(.vertical, 6)
-                .overlay(Capsule().stroke(Theme.pxLine, lineWidth: 1.5))
+                .overlay(pxCorner.stroke(Theme.pxLine, lineWidth: 1.5))
         }
     }
 
@@ -164,14 +162,13 @@ struct DropdownView: View {
                 .font(.pixel(9))
                 .foregroundColor(dim ? Theme.pxDim : Theme.pxInk)
                 .padding(.horizontal, 12).padding(.vertical, 8)
-                .overlay(Rectangle().stroke(Theme.pxLine, lineWidth: 1.5))
+                .overlay(pxCorner.stroke(Theme.pxLine, lineWidth: 1.5))
         }
         .buttonStyle(.plain)
     }
 
     // MARK: - Bits
 
-    /// A small drawn die (white, three pips) — replaces the unreadable 🎲 emoji.
     private var dieIcon: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 3).fill(Theme.pxInk)
@@ -182,6 +179,7 @@ struct DropdownView: View {
         .frame(width: 16, height: 16)
     }
 
+    // Avatars + "?" slots keep smooth corners (Ian: leave the avatars out).
     private func avatar(_ c: CharacterID) -> some View {
         let selected = store.activeCharacter == c
         return Group {
