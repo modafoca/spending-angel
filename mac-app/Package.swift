@@ -13,7 +13,8 @@ let package = Package(
             name: "SpendingAngel",
             resources: [
                 .copy("Resources/voice"),   // catch-line audio per character
-                .copy("Resources/cast")     // Figma character art + portraits
+                .copy("Resources/cast"),    // Figma character art + portraits
+                .copy("Resources/icon")     // menu-bar mark (vector $-halo)
             ]
         )
     ]
