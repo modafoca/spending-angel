@@ -32,8 +32,8 @@ struct DropdownView: View {
     /// frame art in M-07d.
     private var frameBorder: some View {
         ZStack {
-            Rectangle().stroke(Theme.pxLine, lineWidth: 2)
-            Rectangle().stroke(Theme.pxAccent.opacity(0.20), lineWidth: 1).padding(3)
+            PixelFrame(step: 3, steps: 3).stroke(Theme.pxLine, lineWidth: 2)
+            PixelFrame(step: 3, steps: 3).stroke(Theme.pxAccent.opacity(0.22), lineWidth: 1).padding(3)
         }
         .padding(5)
         .allowsHitTesting(false)
