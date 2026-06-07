@@ -6,11 +6,16 @@ import Network
 /// fire-and-forget — no WebSocket needed for v0. (Native Messaging is the ship
 /// path; see PRM Q1.) Bound to loopback only, so no firewall prompt and nothing
 /// off-machine can reach it.
+///
+/// The port doubles as a single-instance lock: if it's already bound, another
+/// copy of the app is running, and `onAddressInUse` fires so we can quit.
 final class BridgeServer {
     static let port: UInt16 = 17865
 
     private var listener: NWListener?
     private let onIntent: (Intent) -> Void
+    /// Called when the port is already taken — i.e. another instance is running.
+    var onAddressInUse: (() -> Void)?
 
     init(onIntent: @escaping (Intent) -> Void) {
         self.onIntent = onIntent
@@ -25,12 +30,23 @@ final class BridgeServer {
             )
             let listener = try NWListener(using: params)
             listener.newConnectionHandler = { [weak self] conn in self?.accept(conn) }
-            listener.stateUpdateHandler = { state in
-                if case .failed(let e) = state { print("[bridge] listener failed: \(e)") }
+            listener.stateUpdateHandler = { [weak self] state in
+                switch state {
+                case .ready:
+                    print("[bridge] listening on http://127.0.0.1:\(BridgeServer.port)")
+                case .failed(let error):
+                    if case .posix(let code) = error, code == .EADDRINUSE {
+                        print("[bridge] port \(BridgeServer.port) already in use — another instance is running.")
+                        self?.onAddressInUse?()
+                    } else {
+                        print("[bridge] listener failed: \(error)")
+                    }
+                default:
+                    break
+                }
             }
             listener.start(queue: .main)
             self.listener = listener
-            print("[bridge] listening on http://127.0.0.1:\(BridgeServer.port)")
         } catch {
             print("[bridge] could not start: \(error)")
         }
