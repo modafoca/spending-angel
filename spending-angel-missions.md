@@ -214,14 +214,23 @@ When complete:
 - ✅ **M-04** — brag stat + streak in the dropdown.
   *(M-02 onward live on `feat/m02-magic-moment`; nothing pushed.)*
 
-## Up next
-- ✅ **M-05** — the bridge (done). ✅ **M-06** — cast art + restyle + $-halo icon (done; voices + entrance gags still pending).
-- **M-07** — Pixel-game UI redesign (below).
-- **M-FINAL** *(parked, optional)* — productize & launch.
+## Status — ⏸️ PAUSED (2026-06-05; resume when Ian's voice tracks are done)
+- ✅ **M-01–M-05** — sensor, macOS app + full-screen overlay, the bridge, dropdown brain, brag stat. **Loop works end to end** (real "Add to Cart" → character ambush).
+- ✅ **M-06** — real Figma cast art + portraits + vector $-halo icon + restyle.
+- ✅ **M-07** — pixel-game UI redesign, DONE + merged to `main` (details below).
+- ⏳ **Remaining:** (1) wire Ian's ElevenLabs **voices** → `Resources/voice/<char>/catch-{1,2,3}.mp3`; (2) **per-character entrance gags** (Wizard's is decided/"awesome"; Angel/Papi/Mom TBD — Mom = slipper-first).
+- **M-FINAL** *(parked, optional)* — productize & launch (.app sign/notarize, Web Store, two-install pairing UX).
 
 ---
 
-## M-07 — Pixel-game UI redesign (4 phases)
+## M-07 — Pixel-game UI redesign (4 phases) — ✅ DONE (merged to main, tip a6da6fd)
+
+> **As built (deviations from the plan below):** font = **Silkscreen** (not Pixel Operator); shuffle
+> copy = **"Shake It Up"** (not "Feeling chaotic"); grid = **4 + 4** dashed "?" slots; **ON/OFF** is the
+> hero button (Test demoted to a small dev link); custom `PixelFrame` shape gives pixel-stepped corners
+> on frame + inputs + buttons (avatars kept smooth); custom `PixelToggleStyle` for visible switches;
+> header = $-halo icon + guardian name (two lines: name over status). **M-07d skipped** — Ian preferred
+> the code frame, so no asset hand-off.
 
 Restyle the dropdown into the pixel-game look from Ian's mockup (dark navy + cyan glow, ornate pixel
 frame, pixel font). **Scope = #3:** reskin our current structure + add shuffle + coming-soon slots;
