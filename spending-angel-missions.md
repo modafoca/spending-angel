@@ -214,7 +214,49 @@ When complete:
 - ✅ **M-04** — brag stat + streak in the dropdown.
   *(M-02 onward live on `feat/m02-magic-moment`; nothing pushed.)*
 
-## Up next (not yet briefed)
-- **M-05** — the bridge (127.0.0.1 WebSocket): real Chrome checkout click → real catch. *The payoff.*
-- **M-06** — design pass + real assets: Figma UI restyle + cast art + ElevenLabs voices (see PRM v2.2 §9).
+## Up next
+- ✅ **M-05** — the bridge (done). ✅ **M-06** — cast art + restyle + $-halo icon (done; voices + entrance gags still pending).
+- **M-07** — Pixel-game UI redesign (below).
 - **M-FINAL** *(parked, optional)* — productize & launch.
+
+---
+
+## M-07 — Pixel-game UI redesign (4 phases)
+
+Restyle the dropdown into the pixel-game look from Ian's mockup (dark navy + cyan glow, ornate pixel
+frame, pixel font). **Scope = #3:** reskin our current structure + add shuffle + coming-soon slots;
+**brag stat stays inline; no Settings subpage yet.** Guardian grid = **4 characters + 3 generic "?"
+coming-soon slots** (same size as the others, no names, image-swappable when added). Phased so the
+first three need ZERO new assets; only phase 4 needs Ian's exported frame art.
+
+### M-07a — Pixel foundation (font + dark/cyan theme)
+- **Objective:** establish the retro look — bundle a pixel font + a dark-navy/cyan theme — on the
+  existing dropdown, layout unchanged.
+- **Scope:** fetch + bundle a free pixel TTF (default *Pixel Operator*, OFL — swappable), register it
+  in Info; add `PixelTheme` (deep navy bg, cyan accent + glow tokens); apply font + colors to current
+  dropdown text/labels/field/toggle. No external art.
+- **Deps:** none. **Deliverable:** dropdown reads as a dark pixel UI immediately.
+
+### M-07b — Shuffle + 7-slot guardian grid
+- **Objective:** add shuffle mode + the coming-soon slots.
+- **Scope:** `Store.shuffleMode` (persisted); "Feeling chaotic? 🎲" toggle; catch picks a random
+  unlocked character when shuffle is on (no immediate repeat). Picker → 7 same-size slots: 4 chars +
+  3 disabled "?" slots (generic question-mark icon, swappable PNG later). Brag stat stays inline.
+- **Deps:** M-07a. **Deliverable:** functional shuffle + the new grid.
+
+### M-07c — Pixel chrome in code (approximate)
+- **Objective:** build the mockup's frames/borders/buttons/glow, approximated in SwiftUI.
+- **Scope:** beveled goal field; the big "Spending Angel is ON" toggle button; guardian-slot rings +
+  cyan glow on the active one; panel styling; header (avatar + title); a "Settings →" link stub. All
+  via SwiftUI shapes/strokes/shadows + `.interpolation(.none)`. ~80% of the mockup, no external art.
+- **Deps:** M-07a, M-07b. **Deliverable:** looks like the mockup, code-only.
+
+### M-07d — Authentic frame art (9-slice swap)
+- **Objective:** swap code-approximated borders for Ian's real pixel frame art.
+- **Scope:** Ian exports the ornate frame pieces as **9-slice PNGs** (outer frame, field border,
+  button frame, slot ring); wire via `resizable(capInsets:resizingMode:) + .interpolation(.none)`.
+- **Deps:** M-07c **+ Ian's exported assets** ← the only phase that needs his art.
+  **Deliverable:** pixel-perfect match to the mockup.
+
+### M-07e *(optional, deferred per #3)* — Settings subpage
+If wanted later: move sound/trigger/snooze (and a future Vice List) behind the "Settings →" link.

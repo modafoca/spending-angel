@@ -6,6 +6,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var bridge: BridgeServer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Fonts.register()                       // pixel UI font (Silkscreen)
+
         // Menu-bar only: no Dock icon, no main window. SPM stand-in for LSUIElement.
         NSApp.setActivationPolicy(.accessory)
 
@@ -21,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.overlay.performCatch(goal: Store.shared.goal, character: Store.shared.activeCharacter)
         }
         // Single-instance guard: if the port's already bound, a copy is already
-        // running — quit this one so we never stack two menu-bar icons again.
+        // running — quit this one so we never stack two menu-bar icons.
         server.onAddressInUse = {
             print("[SpendingAngel] another instance is already running — quitting this one.")
             NSApp.terminate(nil)

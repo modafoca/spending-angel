@@ -14,7 +14,8 @@ let package = Package(
             resources: [
                 .copy("Resources/voice"),   // catch-line audio per character
                 .copy("Resources/cast"),    // Figma character art + portraits
-                .copy("Resources/icon")     // menu-bar mark (vector $-halo)
+                .copy("Resources/icon"),    // menu-bar mark (vector $-halo)
+                .copy("Resources/fonts")    // pixel UI font (Silkscreen)
             ]
         )
     ]
