@@ -20,7 +20,7 @@ final class OverlayController {
 
         guard let screen = NSScreen.main else { return }
 
-        let model = CatchModel(goal: goal, emoji: character.placeholderEmoji)
+        let model = CatchModel(goal: goal, character: character)
         self.model = model
 
         let panel = NSPanel(

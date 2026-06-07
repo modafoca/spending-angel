@@ -4,10 +4,10 @@ import SwiftUI
 final class CatchModel: ObservableObject {
     @Published var visible = false
     let goal: String
-    let emoji: String
-    init(goal: String, emoji: String) {
+    let character: CharacterID
+    init(goal: String, character: CharacterID) {
         self.goal = goal
-        self.emoji = emoji
+        self.character = character
     }
 
     /// Goal-agnostic fallback when no goal is set — the voice never names the
@@ -24,53 +24,54 @@ final class CatchModel: ObservableObject {
 struct CatchView: View {
     @ObservedObject var model: CatchModel
 
-    private let navy = Color(red: 0.11, green: 0.18, blue: 0.34)
-
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Color.black.opacity(0.001)                 // hit-testable, ~invisible
                 .ignoresSafeArea()
 
-            HStack(alignment: .top, spacing: -10) {
+            HStack(alignment: .top, spacing: -16) {
                 bubble
                 character
             }
-            .padding(.top, 90)
-            .padding(.trailing, 64)
+            .padding(.top, 70)
+            .padding(.trailing, 56)
             .rotationEffect(.degrees(-3))              // sticker tilt
             .scaleEffect(model.visible ? 1 : 0.6)
-            .offset(x: model.visible ? 0 : 460)        // slide in from the right
+            .offset(x: model.visible ? 0 : 520)        // slide in from the right
             .opacity(model.visible ? 1 : 0)
             .animation(.spring(response: 0.45, dampingFraction: 0.72), value: model.visible)
         }
     }
 
-    // PLACEHOLDER — real Figma cast art lands in M-06. Emoji is an obvious
-    // stand-in so nobody ships it by accident.
     private var character: some View {
-        Text(model.emoji)
-            .font(.system(size: 140))
-            .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
+        Group {
+            if let art = CastAssets.art(model.character) {
+                Image(nsImage: art).resizable().scaledToFit().frame(height: 380)
+            } else {
+                Text(model.character.placeholderEmoji).font(.system(size: 150)) // fallback
+            }
+        }
+        .shadow(color: .black.opacity(0.22), radius: 18, y: 10)
     }
 
     private var bubble: some View {
         Text(model.bubbleText)
-            .font(.system(size: 22, weight: .bold, design: .rounded))
-            .foregroundColor(navy)
+            .font(.system(size: 23, weight: .bold, design: .rounded))
+            .foregroundColor(Theme.navy)
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: 300)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
             .background(
-                RoundedRectangle(cornerRadius: 18)
+                RoundedRectangle(cornerRadius: 20)
                     .fill(.white)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18)
-                            .stroke(navy, lineWidth: 3)
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(Theme.navy, lineWidth: 3)
                     )
             )
             .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
-            .offset(y: 36)
+            .offset(y: 40)
     }
 }

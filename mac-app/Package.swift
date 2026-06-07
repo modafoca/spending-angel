@@ -12,9 +12,8 @@ let package = Package(
         .executableTarget(
             name: "SpendingAngel",
             resources: [
-                // Preserves the voice/<character>/ folder structure in the
-                // bundle so AudioPlayer can look up catch-N.mp3 by subdirectory.
-                .copy("Resources/voice")
+                .copy("Resources/voice"),   // catch-line audio per character
+                .copy("Resources/cast")     // Figma character art + portraits
             ]
         )
     ]

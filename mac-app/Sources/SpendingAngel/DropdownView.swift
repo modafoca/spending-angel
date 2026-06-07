@@ -1,13 +1,12 @@
 import SwiftUI
 import AppKit
 
-/// The menu-bar dropdown — the "brain." Portrait, editable goal, character
-/// picker, the brag stat + streak (M-04), snooze, on/off.
+/// The menu-bar dropdown — the "brain," in the brand's cream/navy/gold sticker
+/// look. Portrait, editable goal, character picker (real art), brag stat +
+/// streak, snooze, on/off.
 struct DropdownView: View {
     @ObservedObject var store: Store
     var onTest: () -> Void
-
-    private let navy = Color(red: 0.11, green: 0.18, blue: 0.34)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -18,19 +17,23 @@ struct DropdownView: View {
             controls
         }
         .padding(16)
-        .frame(width: 288)
+        .frame(width: 300)
+        .background(Theme.cream)
     }
+
+    // MARK: - Sections
 
     private var header: some View {
         HStack(spacing: 10) {
-            Text(store.activeCharacter.placeholderEmoji)
-                .font(.system(size: 30))
+            portrait(store.activeCharacter, size: 42)
+                .overlay(Circle().stroke(Theme.gold, lineWidth: 2))
             VStack(alignment: .leading, spacing: 1) {
                 Text(store.activeCharacter.displayName)
-                    .font(.headline)
+                    .font(.system(.headline, design: .rounded))
+                    .foregroundColor(Theme.navy)
                 Text(store.statusText)
                     .font(.caption)
-                    .foregroundStyle(store.onDuty ? Color.green : .secondary)
+                    .foregroundColor(Theme.navy.opacity(store.onDuty ? 0.7 : 0.4))
             }
             Spacer()
         }
@@ -39,10 +42,15 @@ struct DropdownView: View {
     private var goalField: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("SAVING FOR")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(.caption2.weight(.bold))
+                .foregroundColor(Theme.navy.opacity(0.6))
             TextField("e.g. Tokyo trip", text: $store.goal)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.plain)
+                .foregroundColor(Theme.navy)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 9).fill(.white))
+                .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.navy.opacity(0.25), lineWidth: 1.5))
         }
     }
 
@@ -50,18 +58,11 @@ struct DropdownView: View {
         HStack(spacing: 8) {
             ForEach(CharacterID.allCases) { c in
                 Button { store.activeCharacter = c } label: {
-                    Text(c.placeholderEmoji)
-                        .font(.system(size: 24))
-                        .frame(width: 46, height: 46)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(store.activeCharacter == c
-                                      ? Color.accentColor.opacity(0.22)
-                                      : Color.gray.opacity(0.12))
-                        )
+                    avatar(c)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(store.activeCharacter == c ? Color.accentColor : .clear, lineWidth: 2)
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(store.activeCharacter == c ? Theme.gold : Theme.navy.opacity(0.15),
+                                        lineWidth: store.activeCharacter == c ? 3 : 1.5)
                         )
                 }
                 .buttonStyle(.plain)
@@ -70,55 +71,91 @@ struct DropdownView: View {
         }
     }
 
-    // M-04 — the brag stat + streak, in the active character's voice.
     private var stat: some View {
         VStack(alignment: .leading, spacing: 4) {
             if store.monthlyCount == 0 {
                 Text("No catches yet this month. So far, so good.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(Theme.navy.opacity(0.6))
             } else {
                 Text(store.activeCharacter.brag(count: store.monthlyCount, goal: store.goal))
-                    .font(.callout.weight(.semibold))
-                    .foregroundColor(navy)
+                    .font(.system(.callout, design: .rounded).weight(.semibold))
+                    .foregroundColor(Theme.navy)
                     .fixedSize(horizontal: false, vertical: true)
                 if let days = store.streakDays {
                     Text(store.activeCharacter.streak(days: days))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(Theme.navy.opacity(0.6))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.gray.opacity(0.10)))
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.gold.opacity(0.18)))
     }
 
     private var controls: some View {
         VStack(spacing: 10) {
             Button(action: onTest) {
-                Text("▶︎ Test the catch").frame(maxWidth: .infinity)
+                Text("▶︎ Test the catch")
+                    .font(.system(.body, design: .rounded).weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background(Theme.gold)
+                    .foregroundColor(Theme.navy)
+                    .clipShape(RoundedRectangle(cornerRadius: 11))
             }
-            .controlSize(.large)
+            .buttonStyle(.plain)
 
             HStack {
-                if store.isSnoozed {
-                    Button("Wake up") { store.wake() }
-                } else {
-                    Button("Snooze 1 hr") { store.snooze(hours: 1) }
+                Button(store.isSnoozed ? "Wake up" : "Snooze 1 hr") {
+                    store.isSnoozed ? store.wake() : store.snooze(hours: 1)
                 }
+                .buttonStyle(.plain)
+                .foregroundColor(Theme.navy)
                 Spacer()
                 Toggle("On", isOn: $store.enabled)
                     .toggleStyle(.switch)
+                    .tint(Theme.gold)
+                    .foregroundColor(Theme.navy)
             }
+            .font(.callout)
 
             Divider()
 
             Button("Quit Spending Angel") { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.plain)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundColor(Theme.navy.opacity(0.5))
         }
+    }
+
+    // MARK: - Bits
+
+    private func avatar(_ c: CharacterID) -> some View {
+        Group {
+            if let p = CastAssets.portrait(c) {
+                Image(nsImage: p).resizable().scaledToFill()
+            } else {
+                Text(c.placeholderEmoji).font(.system(size: 22))
+            }
+        }
+        .frame(width: 54, height: 54)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func portrait(_ c: CharacterID, size: CGFloat) -> some View {
+        Group {
+            if let p = CastAssets.portrait(c) {
+                Image(nsImage: p).resizable().scaledToFill()
+            } else {
+                Text(c.placeholderEmoji).font(.system(size: size * 0.5))
+            }
+        }
+        .frame(width: size, height: size)
+        .background(Color.white)
+        .clipShape(Circle())
     }
 }
