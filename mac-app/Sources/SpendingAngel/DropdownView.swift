@@ -145,7 +145,7 @@ struct DropdownView: View {
         }
         .frame(width: 58, height: 58)
         .background(Theme.pxPanel)
-        .overlay(Theme.pxAccent.opacity(selected ? 0.30 : 0).blendMode(.plusLighter))
+        .opacity(selected ? 1 : 0.4)            // dim the unselected; no wash on the selected
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .overlay(
             RoundedRectangle(cornerRadius: 4)
