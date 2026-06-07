@@ -116,26 +116,25 @@ struct DropdownView: View {
 
     private var controls: some View {
         VStack(spacing: 12) {
-            Button(action: onTest) {
-                Text("▶ TEST THE CATCH")
+            // Hero — the master on/off (the real primary, per the mockup).
+            Button { store.enabled.toggle() } label: {
+                Text(store.enabled ? "SPENDING ANGEL IS ON" : "SPENDING ANGEL IS OFF")
                     .font(.pixel(12, bold: true))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Theme.pxAccent)
-                    .foregroundColor(Theme.pxBG)
+                    .padding(.vertical, 13)
+                    .background(store.enabled ? Theme.pxAccent : Theme.pxPanel)
+                    .foregroundColor(store.enabled ? Theme.pxBG : Theme.pxDim)
+                    .overlay(Rectangle().stroke(store.enabled ? Color.clear : Theme.pxLine, lineWidth: 1.5))
             }
             .buttonStyle(.plain)
 
+            // Secondary — snooze (real) + a small dev Test (hidden at ship).
             HStack(spacing: 8) {
-                Button(store.isSnoozed ? "WAKE UP" : "SNOOZE 1 HR") {
+                secondaryButton(store.isSnoozed ? "WAKE UP" : "SNOOZE 1 HR") {
                     store.isSnoozed ? store.wake() : store.snooze(hours: 1)
                 }
-                .buttonStyle(.plain)
-                .font(.pixel(10)).foregroundColor(Theme.pxInk)
                 Spacer()
-                Text("ON").font(.pixel(10)).foregroundColor(Theme.pxInk)
-                Toggle("", isOn: $store.enabled)
-                    .toggleStyle(PixelToggleStyle()).labelsHidden()
+                secondaryButton("▶ TEST", dim: true, action: onTest)
             }
 
             Button("QUIT") { NSApplication.shared.terminate(nil) }
@@ -144,6 +143,17 @@ struct DropdownView: View {
                 .padding(.horizontal, 16).padding(.vertical, 6)
                 .overlay(Capsule().stroke(Theme.pxLine, lineWidth: 1.5))
         }
+    }
+
+    private func secondaryButton(_ label: String, dim: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.pixel(9))
+                .foregroundColor(dim ? Theme.pxDim : Theme.pxInk)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .overlay(Rectangle().stroke(Theme.pxLine, lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Bits
