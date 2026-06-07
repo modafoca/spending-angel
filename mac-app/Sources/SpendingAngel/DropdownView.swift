@@ -41,14 +41,20 @@ struct DropdownView: View {
     // MARK: - Sections
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text("SPENDING ANGEL")
-                .font(.pixel(13, bold: true))
+                .font(.pixel(12, bold: true))
                 .foregroundColor(Theme.pxInk)
-            Spacer()
-            Text(store.statusText.uppercased())
-                .font(.pixel(9))
-                .foregroundColor(store.onDuty ? Theme.pxAccent : Theme.pxDim)
+            Spacer(minLength: 6)
+            (
+                Text(store.shuffleMode ? "SHUFFLE" : store.activeCharacter.displayName.uppercased())
+                    .foregroundColor(Theme.pxDim)
+                + Text("  ")
+                + Text(store.statusText.uppercased())
+                    .foregroundColor(store.onDuty ? Theme.pxAccent : Theme.pxDim)
+            )
+            .font(.pixel(9))
+            .lineLimit(1)
         }
     }
 
