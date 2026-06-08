@@ -37,9 +37,7 @@ struct CatchView: View {
             }
             .padding(.top, 70)
             .padding(.trailing, 20)
-            .rotationEffect(.degrees(animated ? 0 : -3))
-            .scaleEffect((model.visible || animated) ? 1 : 0.6)
-            .offset(x: animated ? 0 : (model.visible ? 0 : 520))   // animated = no slide
+            .offset(x: (model.character.slidesIn && !model.visible) ? 560 : 0)  // slide-in only for sliders (Papi)
             .opacity(model.visible ? 1 : 0)
             .animation(.spring(response: 0.45, dampingFraction: 0.72), value: model.visible)
         }

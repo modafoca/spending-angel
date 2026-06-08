@@ -35,6 +35,15 @@ enum CharacterID: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Whether the overlay entrance slides in from the right (vs. playing the
+    /// animation in place). Papi slides; Angel/Wizard play in place.
+    var slidesIn: Bool {
+        switch self {
+        case .papi: return true
+        default:    return false
+        }
+    }
+
     /// The brag stat — the character flexes the (real) catch count, anchored to
     /// the goal where it fits. Written copy, not voiced.
     func brag(count n: Int, goal: String) -> String {

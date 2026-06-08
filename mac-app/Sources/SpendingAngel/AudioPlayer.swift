@@ -11,6 +11,7 @@ final class AudioPlayer {
     /// whole line.
     @discardableResult
     func playRandomCatch(for character: CharacterID) -> TimeInterval {
+        player?.stop()                                   // clean handoff if one is still playing
         var urls = mp3s(in: character.rawValue)
         if urls.isEmpty { urls = mp3s(in: "angel") }     // placeholder fallback
         guard let url = urls.randomElement() else {

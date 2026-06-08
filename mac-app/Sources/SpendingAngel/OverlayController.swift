@@ -14,9 +14,8 @@ final class OverlayController {
     private var autoDismiss: DispatchWorkItem?
 
     func performCatch(goal: String, character: CharacterID) {
-        dismiss(animated: false)                       // never stack two
-
-        guard let screen = NSScreen.main else { return }
+        guard panel == nil else { return }             // a catch is already on screen — ignore
+        guard let screen = NSScreen.main else { return }   // re-triggers (no audio/anim glitch from rapid taps)
 
         let model = CatchModel(goal: goal, character: character)
         self.model = model
