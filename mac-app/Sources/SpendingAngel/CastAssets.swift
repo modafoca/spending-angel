@@ -1,16 +1,17 @@
 import AppKit
 
-/// Loads the Figma character art (full figure, portrait, animation frames) from
-/// the bundle, cached. Transparent PNGs live in Resources/cast/.
+/// Loads bundled art (character figures, portraits, animation frames, UI art),
+/// cached. Transparent PNGs live under Resources/.
 enum CastAssets {
     private static var cache: [String: NSImage] = [:]
     private static var frameCache: [String: [NSImage]] = [:]
 
-    private static func load(_ name: String) -> NSImage? {
-        if let hit = cache[name] { return hit }
-        guard let url = Bundle.module.url(forResource: name, withExtension: "png", subdirectory: "cast"),
+    private static func load(_ name: String, subdir: String = "cast") -> NSImage? {
+        let key = "\(subdir)/\(name)"
+        if let hit = cache[key] { return hit }
+        guard let url = Bundle.module.url(forResource: name, withExtension: "png", subdirectory: subdir),
               let img = NSImage(contentsOf: url) else { return nil }
-        cache[name] = img
+        cache[key] = img
         return img
     }
 
@@ -19,6 +20,9 @@ enum CastAssets {
 
     /// Cropped head/bust for the dropdown picker + header.
     static func portrait(_ c: CharacterID) -> NSImage? { load("\(c.rawValue)-portrait") }
+
+    /// UI art (e.g. the speech bubble) from Resources/ui/.
+    static func ui(_ name: String) -> NSImage? { load(name, subdir: "ui") }
 
     /// Animation frames from `cast/<id>_sequence/`, sorted by filename. Empty if
     /// the character has no animation (then the overlay uses the static art).

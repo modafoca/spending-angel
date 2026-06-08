@@ -15,7 +15,8 @@ let package = Package(
                 .copy("Resources/voice"),   // catch-line audio per character
                 .copy("Resources/cast"),    // Figma character art + portraits
                 .copy("Resources/icon"),    // menu-bar mark (vector $-halo)
-                .copy("Resources/fonts")    // pixel UI font (Silkscreen)
+                .copy("Resources/fonts"),   // pixel UI font (Silkscreen)
+                .copy("Resources/ui")       // speech bubble + UI art
             ]
         )
     ]

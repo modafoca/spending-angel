@@ -31,12 +31,12 @@ struct CatchView: View {
         ZStack(alignment: .topTrailing) {
             Color.black.opacity(0.001).ignoresSafeArea()
 
-            HStack(alignment: .top, spacing: -16) {
+            HStack(alignment: .top, spacing: -8) {
                 bubble
                 character
             }
             .padding(.top, 70)
-            .padding(.trailing, 56)
+            .padding(.trailing, 28)
             .rotationEffect(.degrees(animated ? 0 : -3))
             .scaleEffect((model.visible || animated) ? 1 : 0.6)
             .offset(x: animated ? 0 : (model.visible ? 0 : 520))   // animated = no slide
@@ -61,20 +61,6 @@ struct CatchView: View {
     }
 
     private var bubble: some View {
-        Text(model.bubbleText)
-            .font(.system(size: 23, weight: .bold, design: .rounded))
-            .foregroundColor(Theme.navy)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: 300)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(.white)
-                    .overlay(RoundedRectangle(cornerRadius: 20).stroke(Theme.navy, lineWidth: 3))
-            )
-            .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
-            .offset(y: 40)
+        SpeechBubble(text: model.bubbleText, width: 280)
     }
 }
