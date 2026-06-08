@@ -1,41 +1,36 @@
 import AVFoundation
 
-/// Plays catch-lines at full volume — no browser, no autoplay gating. This is
-/// the whole reason the performer is native instead of in the browser.
+/// Plays catch-lines at full volume — no browser, no autoplay gating.
 final class AudioPlayer {
     static let shared = AudioPlayer()
     private var player: AVAudioPlayer?
 
-    /// Plays a random catch-line for the given character. Looks in
-    /// Resources/voice/<character>/catch-{1,2,3}.mp3; falls back to the Angel
-    /// folder (the only one with a placeholder for now). Ian drops real
-    /// ElevenLabs recordings into each character's folder for M-06.
-    func playRandomCatch(for character: CharacterID) {
-        var urls = catchURLs(folder: character.rawValue)
-        if urls.isEmpty { urls = catchURLs(folder: "angel") }   // placeholder fallback
-
+    /// Plays a random catch-line for the character — ANY `.mp3` in
+    /// `voice/<id>/` (so Ian's files can be named anything), falling back to the
+    /// Angel folder. Returns the clip duration so the overlay can stay up for the
+    /// whole line.
+    @discardableResult
+    func playRandomCatch(for character: CharacterID) -> TimeInterval {
+        var urls = mp3s(in: character.rawValue)
+        if urls.isEmpty { urls = mp3s(in: "angel") }     // placeholder fallback
         guard let url = urls.randomElement() else {
-            print("[SpendingAngel] no catch-line audio found for \(character.rawValue)")
-            return
+            print("[SpendingAngel] no catch-line audio for \(character.rawValue)")
+            return 0
         }
         do {
             let p = try AVAudioPlayer(contentsOf: url)
             p.volume = 1.0
             p.prepareToPlay()
             p.play()
-            player = p                                 // retain through playback
+            player = p                                   // retain through playback
+            return p.duration
         } catch {
             print("[SpendingAngel] audio error: \(error)")
+            return 0
         }
     }
 
-    private func catchURLs(folder: String) -> [URL] {
-        (1...3).compactMap { n in
-            Bundle.module.url(
-                forResource: "catch-\(n)",
-                withExtension: "mp3",
-                subdirectory: "voice/\(folder)"
-            )
-        }
+    private func mp3s(in folder: String) -> [URL] {
+        Bundle.module.urls(forResourcesWithExtension: "mp3", subdirectory: "voice/\(folder)") ?? []
     }
 }
