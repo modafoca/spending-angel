@@ -31,12 +31,12 @@ struct CatchView: View {
         ZStack(alignment: .topTrailing) {
             Color.black.opacity(0.001).ignoresSafeArea()
 
-            HStack(alignment: .top, spacing: -30) {     // bubble way closer to the character
+            HStack(alignment: .top, spacing: -70) {     // bubble tight to the character
                 bubble
                 character
             }
             .padding(.top, 70)
-            .padding(.trailing, 20)                       // 8px further right
+            .padding(.trailing, 20)
             .rotationEffect(.degrees(animated ? 0 : -3))
             .scaleEffect((model.visible || animated) ? 1 : 0.6)
             .offset(x: animated ? 0 : (model.visible ? 0 : 520))   // animated = no slide
