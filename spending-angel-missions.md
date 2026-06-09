@@ -214,11 +214,12 @@ When complete:
 - ✅ **M-04** — brag stat + streak in the dropdown.
   *(M-02 onward live on `feat/m02-magic-moment`; nothing pushed.)*
 
-## Status — ⏸️ PAUSED (2026-06-05; resume when Ian's voice tracks are done)
+## Status — 🎉 CAST COMPLETE + ALIVE (2026-06-08)
 - ✅ **M-01–M-05** — sensor, macOS app + full-screen overlay, the bridge, dropdown brain, brag stat. **Loop works end to end** (real "Add to Cart" → character ambush).
 - ✅ **M-06** — real Figma cast art + portraits + vector $-halo icon + restyle.
 - ✅ **M-07** — pixel-game UI redesign, DONE + merged to `main` (details below).
-- ⏳ **Remaining:** (1) wire Ian's ElevenLabs **voices** → `Resources/voice/<char>/catch-{1,2,3}.mp3`; (2) **per-character entrance gags** (Wizard's is decided/"awesome"; Angel/Papi/Mom TBD — Mom = slipper-first).
+- ✅ **Voices + animated entrances + captioned bubble — ALL DONE & pushed.** All 4 guardians animate + speak (Ian's voice via ElevenLabs) with their own entrance (Papi/Mom slide in; Angel/Wizard in place), and the speech bubble **types out the exact spoken line** matched to the audio (`voice/<id>/captions.json`).
+- ⏳ **Only M-FINAL remains** (parked): productize & launch.
 - **M-FINAL** *(parked, optional)* — productize & launch (.app sign/notarize, Web Store, two-install pairing UX).
 
 ---
