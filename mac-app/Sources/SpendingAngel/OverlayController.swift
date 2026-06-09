@@ -5,9 +5,7 @@ import SwiftUI
 ///
 ///   t+0.0  show panel; character animates/enters; clicks intercepted; voice plays
 ///   t+0.5  intercept releases (panel becomes click-through)
-///   t+hold auto-dismiss (hold = long enough for the whole voice line)
-///
-/// The 0.5s intercept is the "get through me first" gag.
+///   t+hold auto-dismiss (long enough for the whole voice line)
 final class OverlayController {
     private var panel: NSPanel?
     private var model: CatchModel?
@@ -15,9 +13,14 @@ final class OverlayController {
 
     func performCatch(goal: String, character: CharacterID) {
         guard panel == nil else { return }             // a catch is already on screen — ignore
-        guard let screen = NSScreen.main else { return }   // re-triggers (no audio/anim glitch from rapid taps)
+        guard let screen = NSScreen.main else { return }   // re-triggers (avoids audio/anim races)
 
-        let model = CatchModel(goal: goal, character: character)
+        // Pick the line + its caption up front so the bubble can type the exact
+        // text being spoken. Falls back to the goal reminder if no caption yet.
+        let line = AudioPlayer.shared.pickLine(for: character)
+        let caption = line?.caption ?? Self.fallbackCaption(goal: goal)
+
+        let model = CatchModel(goal: goal, character: character, caption: caption)
         self.model = model
 
         let panel = NSPanel(
@@ -41,9 +44,8 @@ final class OverlayController {
         // Entrance (next runloop tick so the transition animates from hidden).
         DispatchQueue.main.async { model.visible = true }
 
-        // Voice — full volume. Capture duration so the overlay stays up for the
-        // whole line (animations + longer voiced lines need the room).
-        let duration = AudioPlayer.shared.playRandomCatch(for: character)
+        // Voice — full volume; duration sets how long we hold the overlay.
+        let duration = line.map { AudioPlayer.shared.play($0) } ?? 0
 
         // Release the click-intercept after ~0.5s.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak panel] in
@@ -55,6 +57,12 @@ final class OverlayController {
         let work = DispatchWorkItem { [weak self] in self?.dismiss(animated: true) }
         autoDismiss = work
         DispatchQueue.main.asyncAfter(deadline: .now() + hold, execute: work)
+    }
+
+    /// Used until a character has a captions.json — keeps the goal reminder.
+    private static func fallbackCaption(goal: String) -> String {
+        let g = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+        return g.isEmpty ? "Hey. Stop. Don't do that." : "You're saving for \(g)."
     }
 
     func dismiss(animated: Bool) {

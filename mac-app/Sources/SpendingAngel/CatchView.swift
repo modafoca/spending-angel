@@ -5,21 +5,18 @@ final class CatchModel: ObservableObject {
     @Published var visible = false
     let goal: String
     let character: CharacterID
-    init(goal: String, character: CharacterID) {
+    let caption: String          // the line shown in the bubble (matches the audio)
+
+    init(goal: String, character: CharacterID, caption: String) {
         self.goal = goal
         self.character = character
-    }
-
-    var bubbleText: String {
-        let g = goal.trimmingCharacters(in: .whitespacesAndNewlines)
-        return g.isEmpty ? "Hey. Stop. Don't do that." : "You're saving for \(g)."
+        self.caption = caption
     }
 }
 
 /// The full-screen, transparent performance. Animated characters play their
-/// frame sequence in place (the animation IS the entrance — no slide); static
-/// ones still slide in. A near-invisible backdrop lets the 0.5s intercept swallow
-/// clicks anywhere on screen.
+/// frame sequence; Papi/Mom slide in, Angel/Wizard play in place. The bubble
+/// types out the spoken line.
 struct CatchView: View {
     @ObservedObject var model: CatchModel
 
@@ -37,7 +34,7 @@ struct CatchView: View {
             }
             .padding(.top, 70)
             .padding(.trailing, 20)
-            .offset(x: (model.character.slidesIn && !model.visible) ? 560 : 0)  // slide-in only for sliders (Papi)
+            .offset(x: (model.character.slidesIn && !model.visible) ? 560 : 0)  // slide-in for sliders
             .opacity(model.visible ? 1 : 0)
             .animation(.spring(response: 0.45, dampingFraction: 0.72), value: model.visible)
         }
@@ -59,6 +56,6 @@ struct CatchView: View {
     }
 
     private var bubble: some View {
-        SpeechBubble(text: model.bubbleText, width: 220)   // smaller bubble (type stays the same)
+        SpeechBubble(text: model.caption, width: 220)
     }
 }
