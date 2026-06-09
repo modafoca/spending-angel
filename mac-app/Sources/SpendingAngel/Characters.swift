@@ -39,8 +39,8 @@ enum CharacterID: String, CaseIterable, Identifiable {
     /// animation in place). Papi slides; Angel/Wizard play in place.
     var slidesIn: Bool {
         switch self {
-        case .papi: return true
-        default:    return false
+        case .papi, .mom: return true
+        default:          return false
         }
     }
 
