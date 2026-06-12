@@ -1,0 +1,32 @@
+# Spending Angel — CI (M-F1).
+# Two halves, two jobs: the Swift menu-bar app builds + tests on macOS;
+# the extension's pure detection logic tests on Linux (fast + free).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  mac-app:
+    name: macOS app (build + test)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      - name: Build
+        run: swift build --package-path mac-app
+      - name: Test
+        run: swift test --package-path mac-app
+
+  extension:
+    name: Extension (detection tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Test
+        run: node --test extension/tests/*.test.js

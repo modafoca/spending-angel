@@ -5,12 +5,18 @@ import AppKit
 enum CastAssets {
     private static var cache: [String: NSImage] = [:]
     private static var frameCache: [String: [NSImage]] = [:]
+    private static var reported = Set<String>()    // log each missing asset once, not per render
 
     private static func load(_ name: String, subdir: String = "cast") -> NSImage? {
         let key = "\(subdir)/\(name)"
         if let hit = cache[key] { return hit }
         guard let url = Bundle.module.url(forResource: name, withExtension: "png", subdirectory: subdir),
-              let img = NSImage(contentsOf: url) else { return nil }
+              let img = NSImage(contentsOf: url) else {
+            if reported.insert(key).inserted {
+                Log.error("assets.missing", "\(key).png not loadable from bundle")
+            }
+            return nil
+        }
         cache[key] = img
         return img
     }
@@ -32,6 +38,12 @@ enum CastAssets {
                                        subdirectory: "cast/\(c.rawValue)_sequence") ?? [])
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
         let imgs = urls.compactMap { NSImage(contentsOf: $0) }
+        if imgs.count < urls.count, reported.insert("frames/\(c.rawValue)").inserted {
+            Log.error("assets.frames_unreadable", "\(urls.count - imgs.count) frame(s) in cast/\(c.rawValue)_sequence failed to load")
+        }
+        if imgs.isEmpty, reported.insert("noframes/\(c.rawValue)").inserted {
+            Log.debug("assets.no_frames", "\(c.rawValue) has no animation — using static art")
+        }
         frameCache[c.rawValue] = imgs
         return imgs
     }

@@ -6,22 +6,13 @@
 // character, the sound, mute/snooze, and every pixel of UI. The sensor decides
 // nothing and shows nothing.
 //
-// No overlay, no audio, no goal logic. On intent it calls sendIntent().
+// Detection logic lives in detect.js (pure, unit-tested); structured logging
+// in log.js. Both are loaded before this file via the manifest.
 
 (() => {
-  const BUTTON_TEXT_RE = /\b(add to cart|add to bag|buy now|checkout|proceed to checkout|place order|complete purchase|comprar|añadir al carrito|agregar al carrito|finalizar compra|pagar)\b/i;
-
   // Stops the same click/load from firing twice in quick succession.
   const COOLDOWN_MS = 1500;
   let lastTrigger = 0;
-
-  function hostnameMatches(host, list) {
-    host = host.replace(/^www\./, "");
-    return list.some(p => {
-      if (p.startsWith("*.")) return host.endsWith(p.slice(1));
-      return host === p || host.endsWith("." + p);
-    });
-  }
 
   // The one and only output of the sensor.
   function sendIntent(trigger) {
@@ -30,6 +21,9 @@
     lastTrigger = now;
 
     const payload = {
+      // Trace id: minted here at detection time, logged by the app at every
+      // step — one catch is traceable end to end across both halves.
+      id: crypto.randomUUID(),
       type: "checkout_intent",
       trigger,                                       // "click" | "load"
       hostname: location.hostname.replace(/^www\./, ""),
@@ -38,7 +32,7 @@
 
     // No price, no page content, nothing personal — privacy is a core
     // principle. We emit the signal that intent happened, and that's it.
-    console.log("[SA sensor]", payload);
+    saLog("info", "sensor.intent", `${trigger} on ${payload.hostname}`, { intent_id: payload.id });
     chrome.storage.local.set({ lastIntent: payload });
 
     // Forward to the macOS app via the service worker — it can reach
@@ -50,8 +44,7 @@
     if (!el || !el.matches) return false;
     if (!el.matches("button, a, input[type='submit'], input[type='button'], [role='button']")) return false;
     const text = (el.innerText || el.value || el.getAttribute("aria-label") || "").trim();
-    if (!text) return false;
-    return BUTTON_TEXT_RE.test(text);
+    return saIsBuyButtonText(text);
   }
 
   function findBuyButtonAncestor(target) {
@@ -76,7 +69,7 @@
 
     // Load path: only on a known shopping domain.
     const list = typeof SPENDING_ANGEL_DOMAINS !== "undefined" ? SPENDING_ANGEL_DOMAINS : [];
-    if (hostnameMatches(location.hostname, list)) {
+    if (saHostnameMatches(location.hostname, list)) {
       setTimeout(() => sendIntent("load"), 800); // let first paint settle
     }
   }

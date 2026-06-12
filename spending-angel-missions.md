@@ -219,8 +219,85 @@ When complete:
 - ✅ **M-06** — real Figma cast art + portraits + vector $-halo icon + restyle.
 - ✅ **M-07** — pixel-game UI redesign, DONE + merged to `main` (details below).
 - ✅ **Voices + animated entrances + captioned bubble — ALL DONE & pushed.** All 4 guardians animate + speak (Ian's voice via ElevenLabs) with their own entrance (Papi/Mom slide in; Angel/Wizard in place), and the speech bubble **types out the exact spoken line** matched to the audio (`voice/<id>/captions.json`).
-- ⏳ **Only M-FINAL remains** (parked): productize & launch.
-- **M-FINAL** *(parked, optional)* — productize & launch (.app sign/notarize, Web Store, two-install pairing UX).
+- ⏳ **Only M-FINAL remains**: productize & launch — now broken into M-F1…M-F5 (below). Go/no-go per mission is Ian's.
+
+---
+
+## M-FINAL — Productize & launch (5 missions, ship-ordered)
+
+> **Audit verdict (2026-06-12):** well built ~3.5/5, production-ready ~2/5. Architecture is sound
+> (same app+extension pattern as 1Password/Grammarly); the gap is hardening, packaging, and
+> store compliance — a finite checklist, not a rewrite. Full findings in the audit session.
+
+### M-F1 — Harden the core + structured logging — ✅ DONE (2026-06-12, MOD-270)
+
+> **As built:** all of the below, plus one bonus correctness fix found by the new tests — JS `\b`
+> isn't Unicode-aware, so "pagar" matched inside "pagaré"; the button regex now uses
+> Unicode-aware lookarounds. Tests = Swift Testing (18) + node:test (9), all green; CI at
+> `.github/workflows/ci.yml`. Verified live: 405/404/400/413/204 rejection codes, 10s stall
+> timeout, single-instance guard, and an end-to-end intent trace (`intent_id` from sensor →
+> `bridge.intent_received` → `catch.performed`) with the second intent throttled at 429.
+
+- **Objective:** make the existing app trustworthy before wrapping it. No visible changes.
+- **Bridge:** validate Intent fields (`type`/`trigger` whitelisted), cap request body (1 MB),
+  connection timeouts, real HTTP error codes (400/405) instead of always-200, fix the
+  `NWEndpoint.Port` force-unwrap, **rate-limit intents** (throttle to ~1 catch per N seconds so
+  a buggy/hostile page can't spam the overlay; log dropped intents).
+- **Correctness:** fix month-key/streak date math (explicit calendar/timezone), handle missing or
+  malformed resources (font, mp3, captions.json, PNGs) loudly instead of silently.
+- **Structured logging (the new house standard, local-first):**
+  - JSONL at `~/Library/Logs/SpendingAngel/`, daily files, rotated. Fields: `ts` (ISO-8601),
+    `level`, `event`, `msg`, `intent_id`, `install_id`, plus event context (`character`,
+    `hostname`, …). Queryable with `jq`/DuckDB.
+  - Mirrored to `os.log` (subsystem `net.modafoca.spendingangel`) so Console.app works in dev.
+  - Levels: `debug` (dev only, compiled-out/gated), `info` (normal ops: bridge up, intent
+    received, catch shown), `error` (anything that breaks).
+  - **`intent_id`:** UUID minted in the extension at detection time, travels in the POST payload,
+    logged on both sides → end-to-end trace of every catch.
+  - **`install_id`:** UUID minted on first launch (stands in for user id — single-user app).
+  - Extension side: same structured shape to console + a small ring buffer in
+    `chrome.storage` (last ~50 events) surfaced in the popup debug panel.
+  - **Privacy rule:** logs NEVER leave the machine by default — "nothing leaves your Mac" is the
+    product's selling point. Centralized aggregation is opt-in-only, later, if ever.
+- **Tests + CI:** unit tests for Store date logic + bridge parsing + the button regex; GitHub
+  Action that builds the package and runs them on push.
+- **Deps:** none. **Cost:** $0. **Deliverable:** production-grade core, fully traceable catches.
+
+### M-F2 — Site list control (allowlist / blacklist)
+- **Objective:** replace "watch everything" with a specific, user-customizable site list. This
+  also solves the Chrome Web Store `<all_urls>` review problem.
+- **Scope:**
+  - Curated default shopping-domain list (grow `domains.js`) + user-added sites.
+  - Two modes: **Listed sites only** (default; Web-Store-friendly via
+    `optional_host_permissions` granted per site) and **Everywhere** (explicit broad grant)
+    with a per-site **blacklist** ("never bother me here").
+  - Popup quick actions: "Watch this site" / "Pause on this site" for the current tab.
+  - Full list management in the extension options page; stored in `chrome.storage.sync`.
+  - Tighten detection: regex narrowed (drop bare `pagar`, marketing-copy false positives),
+    button visibility check, fetch timeout (AbortController) when the app isn't running.
+- **Why the extension owns it:** Chrome host-permission grants must be a user gesture *inside
+  Chrome* — the Mac app can't do it. The dropdown can get read-only visibility later.
+- **Deps:** M-F1 (logging makes detection tunable from real data). **Cost:** $0.
+
+### M-F3 — Make it a real app
+- **Objective:** `.app` bundle, signed + notarized, double-clickable.
+- **Scope:** bundle structure + Info.plist + app icon; Developer ID signing + hardened runtime +
+  notarization; launch-at-login; "Check for updates" (Sparkle or manual v1).
+- **Deps:** M-F1; **Apple Developer account ($99/yr) — Ian's purchase decision gates this.**
+
+### M-F4 — Web-Store-ready extension
+- **Objective:** pass Chrome review clean.
+- **Scope:** manifest narrowed per M-F2; store listing copy + screenshots; privacy disclosure
+  ("processes page text locally, transmits nothing off-device"); $5 one-time dev fee.
+- **Open question (decide here):** migrate localhost bridge → Chrome Native Messaging
+  (reviewer-friendliest, no open port). Recommendation: ship v1 on localhost, native messaging
+  as v1.1. **Deps:** M-F2, M-F3.
+
+### M-F5 — Pairing & first-run UX
+- **Objective:** the two-install onboarding moment. App-first: install app → it offers the
+  extension → live green-light when paired (bridge heartbeat both sides already exists).
+- **Scope:** first-run window, pairing status in dropdown + popup, landing page + launch reel.
+- **Deps:** M-F3, M-F4.
 
 ---
 

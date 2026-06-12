@@ -78,15 +78,32 @@ final class Store: ObservableObject {
         if m != countMonth { countMonth = m; monthlyCount = 0 }
         monthlyCount += 1
         lastCatchDate = now
+        Log.info("store.catch_recorded", "monthly count now \(monthlyCount)", ["month": m])
     }
 
     var streakDays: Int? {
         guard let last = lastCatchDate else { return nil }
-        return Calendar.current.dateComponents([.day], from: last, to: Date()).day
+        return Store.daysBetween(last, Date())
     }
 
-    static func monthKey(_ date: Date) -> String {
-        let c = Calendar.current.dateComponents([.year, .month], from: date)
-        return String(format: "%04d-%02d", c.year ?? 0, c.month ?? 0)
+    // The calendar parameter makes the date math deterministic and unit-testable;
+    // callers get the user's local calendar, which is the semantics we want (a
+    // catch at 11pm belongs to that local day/month).
+
+    static func monthKey(_ date: Date, calendar: Calendar = .current) -> String {
+        let c = calendar.dateComponents([.year, .month], from: date)
+        guard let y = c.year, let m = c.month else {
+            Log.error("store.month_key_failed", "calendar returned no year/month for \(date)")
+            return "unknown"
+        }
+        return String(format: "%04d-%02d", y, m)
+    }
+
+    /// Whole calendar days between two dates, midnight-based — so a catch
+    /// yesterday at 11pm reads as "1 day ago" at 7am, not "0 days ago".
+    static func daysBetween(_ from: Date, _ to: Date, calendar: Calendar = .current) -> Int {
+        calendar.dateComponents([.day],
+                                from: calendar.startOfDay(for: from),
+                                to: calendar.startOfDay(for: to)).day ?? 0
     }
 }

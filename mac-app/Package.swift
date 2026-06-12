@@ -18,6 +18,10 @@ let package = Package(
                 .copy("Resources/fonts"),   // pixel UI font (Silkscreen)
                 .copy("Resources/ui")       // speech bubble + UI art
             ]
+        ),
+        .testTarget(
+            name: "SpendingAngelTests",
+            dependencies: ["SpendingAngel"]
         )
     ]
 )

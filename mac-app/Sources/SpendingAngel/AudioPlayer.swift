@@ -18,9 +18,19 @@ final class AudioPlayer {
     func pickLine(for character: CharacterID) -> CatchLine? {
         var urls = mp3s(in: character.rawValue)
         var folder = character.rawValue
-        if urls.isEmpty { urls = mp3s(in: "angel"); folder = "angel" }
-        guard let url = urls.randomElement() else { return nil }
-        return CatchLine(url: url, caption: captions(folder)[url.lastPathComponent])
+        if urls.isEmpty {
+            Log.error("audio.no_lines", "no mp3s in voice/\(folder) — falling back to angel")
+            urls = mp3s(in: "angel"); folder = "angel"
+        }
+        guard let url = urls.randomElement() else {
+            Log.error("audio.no_lines", "no mp3s at all — catch will be silent")
+            return nil
+        }
+        let caption = captions(folder)[url.lastPathComponent]
+        if caption == nil {
+            Log.debug("audio.caption_missing", "\(folder)/\(url.lastPathComponent) has no captions.json entry")
+        }
+        return CatchLine(url: url, caption: caption)
     }
 
     /// Plays the line at full volume; returns its duration.
@@ -35,7 +45,7 @@ final class AudioPlayer {
             player = p
             return p.duration
         } catch {
-            print("[SpendingAngel] audio error: \(error)")
+            Log.error("audio.play_failed", "\(line.url.lastPathComponent): \(error)")
             return 0
         }
     }
@@ -47,10 +57,16 @@ final class AudioPlayer {
     private func captions(_ folder: String) -> [String: String] {
         if let hit = captionCache[folder] { return hit }
         var dict: [String: String] = [:]
-        if let url = Bundle.module.url(forResource: "captions", withExtension: "json", subdirectory: "voice/\(folder)"),
-           let data = try? Data(contentsOf: url),
-           let parsed = try? JSONDecoder().decode([String: String].self, from: data) {
-            dict = parsed
+        if let url = Bundle.module.url(forResource: "captions", withExtension: "json", subdirectory: "voice/\(folder)") {
+            if let data = try? Data(contentsOf: url),
+               let parsed = try? JSONDecoder().decode([String: String].self, from: data) {
+                dict = parsed
+            } else {
+                // The file exists but won't parse — that's broken, not just absent.
+                Log.error("audio.captions_malformed", "voice/\(folder)/captions.json failed to parse")
+            }
+        } else {
+            Log.debug("audio.captions_missing", "voice/\(folder) has no captions.json — bubble uses fallback")
         }
         captionCache[folder] = dict
         return dict

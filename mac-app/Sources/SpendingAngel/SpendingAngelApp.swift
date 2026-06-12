@@ -15,6 +15,7 @@ struct SpendingAngelApp: App {
                 // for character choice, and counts toward the stat.
                 let character = store.nextCatchCharacter()
                 store.recordCatch()
+                Log.info("catch.performed", "manual test", ["character": character.rawValue, "source": "test"])
                 delegate.overlay.performCatch(goal: store.goal, character: character)
             }
         } label: {

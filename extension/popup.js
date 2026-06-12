@@ -25,10 +25,20 @@ function renderBridge(ok, at) {
   }
 }
 
+// Last few structured log lines (the ring buffer log.js maintains).
+function renderEvents(logs) {
+  if (!logs || !logs.length) { $("events").textContent = "none yet"; return }
+  $("events").textContent = logs.slice(-8).map(l => {
+    const t = l.ts ? l.ts.slice(11, 19) : "";
+    return `${t} ${l.level === "error" ? "✕" : "·"} ${l.event} ${l.msg}`;
+  }).join("\n");
+}
+
 async function load() {
-  const s = await chrome.storage.local.get({ lastIntent: null, bridgeOk: null, bridgeAt: null });
+  const s = await chrome.storage.local.get({ lastIntent: null, bridgeOk: null, bridgeAt: null, saLogs: [] });
   renderIntent(s.lastIntent);
   renderBridge(s.bridgeOk, s.bridgeAt);
+  renderEvents(s.saLogs);
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -36,6 +46,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   $("simulate").addEventListener("click", async () => {
     const payload = {
+      id: crypto.randomUUID(),
       type: "checkout_intent",
       trigger: "simulated",
       hostname: "example-shop.test",
@@ -50,6 +61,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
     if (changes.lastIntent) renderIntent(changes.lastIntent.newValue);
+    if (changes.saLogs) renderEvents(changes.saLogs.newValue);
     if (changes.bridgeOk || changes.bridgeAt) load();
   });
 });
