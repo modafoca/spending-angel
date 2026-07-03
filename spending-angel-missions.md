@@ -279,6 +279,10 @@ When complete:
 > fetch got a 4s AbortController timeout. Kept "pagar" (word-bounded since M-F1) — it's the primary
 > checkout verb in Ian's DR/LATAM market, and the visibility + link-strictness gates handle the
 > marketing-copy risk the brief flagged. `chrome.storage.local` (not sync) for v1. 28 JS tests green.
+> **Look & feel:** options page + popup reskinned to the app's pixel-game theme — Silkscreen font
+> (bundled into `extension/fonts/`, OFL), the exact `Theme.swift` dark-navy/cyan palette, and the
+> `PixelFrame` staircase corners ported to CSS `clip-path` (`pixel.css`). Verified in a rendered
+> preview before shipping.
 
 - **Objective:** replace "watch everything" with a specific, user-customizable site list. This
   also solves the Chrome Web Store `<all_urls>` review problem.

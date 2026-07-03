@@ -54,7 +54,7 @@ async function renderListed() {
 
     const tag = document.createElement("span");
     tag.className = "tag " + (granted ? "on" : "pending");
-    tag.textContent = granted ? "watching" : "needs permission";
+    tag.textContent = granted ? "watching" : "pending";
     li.appendChild(tag);
 
     if (!granted) {

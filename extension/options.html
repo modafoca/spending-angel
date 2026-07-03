@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <title>Spending Angel — Sites</title>
+  <link rel="stylesheet" href="pixel.css" />
   <link rel="stylesheet" href="options.css" />
 </head>
 <body>
@@ -15,7 +16,7 @@
       </div>
     </header>
 
-    <section class="card">
+    <section class="card pixel">
       <h2>Where should the Angel watch?</h2>
       <label class="mode">
         <input type="radio" name="mode" value="listed" />
@@ -29,28 +30,28 @@
     </section>
 
     <!-- LISTED MODE -->
-    <section class="card" id="listed-card">
+    <section class="card pixel" id="listed-card">
       <div class="card-head">
         <h2>Your sites</h2>
-        <button id="enable-all" class="btn-primary" hidden>Enable all recommended</button>
+        <button id="enable-all" class="btn btn-cyan" hidden>Enable all recommended</button>
       </div>
       <form id="add-form" class="add-row">
-        <input id="add-input" type="text" placeholder="add a site, e.g. mercadolibre.com.do" autocomplete="off" />
-        <button class="btn-primary" type="submit">Add</button>
+        <input id="add-input" class="field" type="text" placeholder="add a site, e.g. mercadolibre.com.do" autocomplete="off" />
+        <button class="btn" type="submit">Add</button>
       </form>
       <ul id="site-list" class="list"></ul>
       <p id="listed-empty" class="note" hidden>No sites yet. Add one above, or enable the recommended list.</p>
     </section>
 
     <!-- EVERYWHERE MODE -->
-    <section class="card" id="everywhere-card" hidden>
+    <section class="card pixel" id="everywhere-card" hidden>
       <div class="card-head">
         <h2>Paused sites</h2>
       </div>
       <p class="note">The Angel watches everywhere except these. Add a site to be left alone there.</p>
       <form id="pause-form" class="add-row">
-        <input id="pause-input" type="text" placeholder="pause on a site, e.g. wikipedia.org" autocomplete="off" />
-        <button class="btn-primary" type="submit">Pause</button>
+        <input id="pause-input" class="field" type="text" placeholder="pause on a site, e.g. wikipedia.org" autocomplete="off" />
+        <button class="btn" type="submit">Pause</button>
       </form>
       <ul id="block-list" class="list"></ul>
     </section>
