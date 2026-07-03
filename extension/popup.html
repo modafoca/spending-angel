@@ -16,6 +16,14 @@
     </header>
 
     <section class="panel">
+      <h2 class="panel-title">This site</h2>
+      <p id="site-host" class="site-host">—</p>
+      <p id="site-state" class="hint">Checking…</p>
+      <button id="site-action" class="ghost-btn" hidden></button>
+      <p class="hint"><a href="#" id="open-options">Manage all sites →</a></p>
+    </section>
+
+    <section class="panel">
       <h2 class="panel-title">Last detected intent</h2>
       <pre id="last-intent" class="intent">none yet</pre>
     </section>
@@ -35,9 +43,12 @@
       <pre id="events" class="intent">none yet</pre>
     </section>
 
-    <footer class="footer"><span class="version">sensor v0.2 · controls live in the macOS app</span></footer>
+    <footer class="footer"><span class="version">sensor v0.4 · controls live in the macOS app</span></footer>
   </main>
 
+  <script src="domains.js"></script>
+  <script src="sites.js"></script>
+  <script src="detect.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

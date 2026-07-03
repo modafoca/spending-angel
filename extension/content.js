@@ -1,54 +1,64 @@
 // Spending Angel — SENSOR content script.
 //
-// This is now a thin, render-nothing sensor. Its only job: detect checkout
-// intent (a matched-domain page load, or a buy/checkout button click) and emit
-// a structured event. The macOS app is the brain — it owns the goal, the
-// character, the sound, mute/snooze, and every pixel of UI. The sensor decides
-// nothing and shows nothing.
+// A thin, render-nothing sensor. It only runs where the user has chosen to be
+// watched (the service worker injects it per-site — see background.js). Its job:
+// detect checkout intent (a matched-domain page load, or a buy/checkout button
+// click) and emit a structured event. The macOS app is the brain — it owns the
+// goal, the character, the sound, mute/snooze, and every pixel of UI.
 //
-// Detection logic lives in detect.js (pure, unit-tested); structured logging
-// in log.js. Both are loaded before this file via the manifest.
+// Loaded after domains.js, log.js, detect.js, sites.js (which define the
+// globals used below).
 
 (() => {
-  // Stops the same click/load from firing twice in quick succession.
   const COOLDOWN_MS = 1500;
   let lastTrigger = 0;
 
-  // The one and only output of the sensor.
+  const host = saNormalizeHost(location.hostname) || location.hostname.replace(/^www\./, "");
+  const domainList = typeof SPENDING_ANGEL_DOMAINS !== "undefined" ? SPENDING_ANGEL_DOMAINS : [];
+
   function sendIntent(trigger) {
     const now = Date.now();
     if (now - lastTrigger < COOLDOWN_MS) return;
     lastTrigger = now;
 
     const payload = {
-      // Trace id: minted here at detection time, logged by the app at every
-      // step — one catch is traceable end to end across both halves.
+      // Trace id: minted here, logged by the app at every step — one catch is
+      // traceable end to end across both halves.
       id: crypto.randomUUID(),
       type: "checkout_intent",
       trigger,                                       // "click" | "load"
-      hostname: location.hostname.replace(/^www\./, ""),
+      hostname: host,
       ts: now,
     };
 
-    // No price, no page content, nothing personal — privacy is a core
-    // principle. We emit the signal that intent happened, and that's it.
+    // No price, no page content, nothing personal — privacy is a core principle.
     saLog("info", "sensor.intent", `${trigger} on ${payload.hostname}`, { intent_id: payload.id });
     chrome.storage.local.set({ lastIntent: payload });
-
-    // Forward to the macOS app via the service worker — it can reach
-    // http://127.0.0.1 without the page's mixed-content / private-network limits.
     chrome.runtime.sendMessage(payload).catch(() => {});
   }
 
+  // Is this element a real, visible buy control? Links are held to a stricter
+  // test than buttons (see detect.js) because prose links are the main source
+  // of "checkout"/"pagar" false positives.
   function isBuyButton(el) {
     if (!el || !el.matches) return false;
+    const isLink = el.matches("a");
     if (!el.matches("button, a, input[type='submit'], input[type='button'], [role='button']")) return false;
+
     const text = (el.innerText || el.value || el.getAttribute("aria-label") || "").trim();
-    return saIsBuyButtonText(text);
+    const textMatch = isLink ? saIsWholeBuyPhrase(text) : saIsBuyButtonText(text);
+    if (!textMatch) return false;
+
+    // Visibility gate — skip hidden/zero-size controls.
+    const rect = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return saElementIsVisible({
+      width: rect.width, height: rect.height,
+      display: style.display, visibility: style.visibility, opacity: style.opacity,
+    });
   }
 
   function findBuyButtonAncestor(target) {
-    // Walk up a few steps — buy buttons often wrap icon spans.
     let el = target;
     for (let i = 0; i < 4 && el; i++) {
       if (isBuyButton(el)) return el;
@@ -58,18 +68,29 @@
   }
 
   function attachClickWatcher() {
-    document.addEventListener("click", e => {
+    document.addEventListener("click", (e) => {
       if (findBuyButtonAncestor(e.target)) sendIntent("click");
     }, true);
   }
 
-  function main() {
-    // Click path is always live — it's the reliable, gesture-backed signal.
+  async function main() {
+    const cfg = await chrome.storage.local.get({ saMode: "listed", saBlocklist: [] });
+
+    // In "everywhere" mode the script runs on all sites; honor the blocklist.
+    if (cfg.saMode === "everywhere" && saHostInList(host, cfg.saBlocklist)) {
+      saLog("debug", "sensor.blocked", `${host} is on the pause list`);
+      return;
+    }
+
+    // Click path: always live wherever we run — the reliable, gesture-backed signal.
     attachClickWatcher();
 
-    // Load path: only on a known shopping domain.
-    const list = typeof SPENDING_ANGEL_DOMAINS !== "undefined" ? SPENDING_ANGEL_DOMAINS : [];
-    if (saHostnameMatches(location.hostname, list)) {
+    // Load path: fire on any watched site in "listed" mode (the user chose it),
+    // but only on known shopping domains in "everywhere" mode (so a random blog
+    // load doesn't summon a character).
+    const watchedByChoice = cfg.saMode === "listed";
+    const knownShop = saHostnameMatches(location.hostname, domainList);
+    if (watchedByChoice || knownShop) {
       setTimeout(() => sendIntent("load"), 800); // let first paint settle
     }
   }

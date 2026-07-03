@@ -5,7 +5,9 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert");
-const { saIsBuyButtonText, saHostnameMatches } = require("../detect.js");
+const {
+  saIsBuyButtonText, saIsWholeBuyPhrase, saElementIsVisible, saHostnameMatches,
+} = require("../detect.js");
 
 // --- Buy-button text ---
 
@@ -63,4 +65,36 @@ test("does not match lookalike domains", () => {
 test("path-specific entries match their host", () => {
   assert.ok(saHostnameMatches("store.steampowered.com", LIST));
   assert.ok(!saHostnameMatches("steampowered.com", LIST));
+});
+
+// --- Link strictness (M-F2): links must BE a buy phrase, not contain one ---
+
+test("whole-phrase test accepts real buy links", () => {
+  for (const t of ["Checkout", "Buy now", "Pagar", "Add to cart", "  Comprar  ", "Checkout!"]) {
+    assert.ok(saIsWholeBuyPhrase(t), `should accept link text: ${t}`);
+  }
+});
+
+test("whole-phrase test rejects marketing prose", () => {
+  for (const t of ["Checkout our latest blog post", "Ways to pay", "Learn how to buy now and save",
+                   "Comprar guía: cómo elegir"]) {
+    assert.ok(!saIsWholeBuyPhrase(t), `should reject prose link: ${t}`);
+  }
+});
+
+test("buttons still match on contained phrase (looser than links)", () => {
+  assert.ok(saIsBuyButtonText("🛒 Add to cart — only 2 left!"));
+});
+
+// --- Visibility gate (M-F2) ---
+
+test("visible element passes", () => {
+  assert.ok(saElementIsVisible({ width: 120, height: 40, display: "block", visibility: "visible", opacity: "1" }));
+});
+
+test("hidden / zero-size / transparent elements fail", () => {
+  assert.ok(!saElementIsVisible({ width: 0, height: 0, display: "block", visibility: "visible" }));
+  assert.ok(!saElementIsVisible({ width: 120, height: 40, display: "none", visibility: "visible" }));
+  assert.ok(!saElementIsVisible({ width: 120, height: 40, display: "block", visibility: "hidden" }));
+  assert.ok(!saElementIsVisible({ width: 120, height: 40, display: "block", visibility: "visible", opacity: "0" }));
 });

@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Spending Angel — Sensor",
-  "version": "0.3.0",
-  "description": "The eyes for the Spending Angel app: detects checkout intent and signals the app. Renders nothing on its own.",
-  "permissions": ["storage"],
-  "host_permissions": ["<all_urls>", "http://127.0.0.1/*", "http://localhost/*"],
+  "version": "0.4.0",
+  "description": "The eyes for the Spending Angel app: detects checkout intent on the sites you choose and signals the app. Renders nothing on its own.",
+  "permissions": ["storage", "scripting", "activeTab"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "optional_host_permissions": ["*://*/*"],
   "background": {
     "service_worker": "background.js"
   },
@@ -12,11 +13,5 @@
     "default_popup": "popup.html",
     "default_title": "Spending Angel — Sensor"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["domains.js", "log.js", "detect.js", "content.js"],
-      "run_at": "document_idle"
-    }
-  ]
+  "options_page": "options.html"
 }

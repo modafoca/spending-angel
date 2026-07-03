@@ -1,0 +1,80 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Comic Neue", "Comic Sans MS", "Marker Felt", system-ui, sans-serif;
+  background: #fff7e6;
+  color: #1d2f57;
+}
+
+.wrap { max-width: 640px; margin: 0 auto; padding: 28px 20px 48px; }
+
+.head { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+.head .logo { font-size: 40px; }
+.head h1 { margin: 0; font-size: 24px; font-weight: 800; }
+.head .sub { margin: 4px 0 0; font-size: 13px; opacity: 0.75; }
+
+.card {
+  background: #fff;
+  border: 2px solid #1d2f57;
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+}
+.card h2 { margin: 0 0 12px; font-size: 15px; font-weight: 800; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.card-head h2 { margin: 0; }
+
+.mode { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; font-size: 14px; cursor: pointer; }
+.mode input { margin-top: 3px; }
+.note { font-size: 12px; opacity: 0.7; margin: 10px 0 0; }
+
+.add-row { display: flex; gap: 8px; margin-bottom: 14px; }
+.add-row input {
+  flex: 1;
+  font: inherit;
+  border: 2px solid #1d2f57;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff7e6;
+  color: #1d2f57;
+}
+.add-row input::placeholder { color: rgba(29, 47, 87, 0.45); }
+
+.btn-primary {
+  font: inherit;
+  font-weight: 800;
+  background: #f4b740;
+  border: 2px solid #1d2f57;
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  color: #1d2f57;
+  white-space: nowrap;
+}
+.btn-primary:hover { background: #ffc94d; }
+
+.list { list-style: none; margin: 0; padding: 0; }
+.row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 4px;
+  border-top: 1px dashed rgba(29, 47, 87, 0.2);
+}
+.row:first-child { border-top: 0; }
+.row .host { flex: 1; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; word-break: break-all; }
+.row .tag {
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 2px 7px; border-radius: 999px;
+}
+.tag.on { background: #d7f5dd; color: #1a7f37; }
+.tag.pending { background: #fdeecb; color: #9a6a00; }
+
+.link-btn {
+  font: inherit; font-size: 12px; font-weight: 700;
+  background: transparent; border: 0; cursor: pointer;
+  color: #1d2f57; opacity: 0.6; padding: 4px 6px;
+}
+.link-btn:hover { opacity: 1; text-decoration: underline; }
+.link-btn.grant { color: #9a6a00; opacity: 1; }
+
+.foot { text-align: center; font-size: 11px; opacity: 0.55; margin-top: 24px; }

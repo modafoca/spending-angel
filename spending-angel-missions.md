@@ -263,7 +263,23 @@ When complete:
   Action that builds the package and runs them on push.
 - **Deps:** none. **Cost:** $0. **Deliverable:** production-grade core, fully traceable catches.
 
-### M-F2 — Site list control (allowlist / blacklist)
+### M-F2 — Site list control (allowlist / blacklist) — ✅ DONE (2026-07-03, MOD-271)
+
+> **As built:** the big move was killing static `<all_urls>` injection entirely. The manifest now
+> declares NO content scripts and NO broad host permission — only `optional_host_permissions:
+> ["*://*/*"]` plus `scripting`/`activeTab` and loopback for the bridge. The service worker
+> **dynamically registers** the detector (`chrome.scripting.registerContentScripts`) only on hosts
+> the user has actually granted, reconciling on install/startup/permission-change/list-change. So a
+> fresh install asks for nothing and watches nothing until the user acts — exactly the minimal
+> footprint Web Store review wants. New `sites.js` holds the pure allow/block/mode logic (11 tests);
+> new **options page** manages the full list (recommended seed + add/remove, per-site grant,
+> "enable all recommended"); the **popup** got a mode-aware "Watch/Stop / Pause/Resume this site"
+> quick action. Detection tightened: links must BE a buy phrase (not merely contain one) so
+> "Checkout our blog" is ignored, a visibility gate drops hidden/zero-size controls, and the bridge
+> fetch got a 4s AbortController timeout. Kept "pagar" (word-bounded since M-F1) — it's the primary
+> checkout verb in Ian's DR/LATAM market, and the visibility + link-strictness gates handle the
+> marketing-copy risk the brief flagged. `chrome.storage.local` (not sync) for v1. 28 JS tests green.
+
 - **Objective:** replace "watch everything" with a specific, user-customizable site list. This
   also solves the Chrome Web Store `<all_urls>` review problem.
 - **Scope:**
