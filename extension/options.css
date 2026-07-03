@@ -3,7 +3,7 @@
 .wrap { max-width: 660px; margin: 0 auto; padding: 32px 22px 56px; }
 
 .head { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
-.head .logo { font-size: 40px; filter: drop-shadow(0 0 10px rgba(102, 209, 255, 0.35)); }
+.head .logo { width: 32px; height: 50px; }
 .head h1 {
   font-family: var(--pixel);
   font-size: 20px;

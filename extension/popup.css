@@ -3,7 +3,7 @@
 body { width: 320px; }
 
 .header { display: flex; align-items: center; gap: 10px; padding: 15px 18px 10px; }
-.header .logo { font-size: 26px; filter: drop-shadow(0 0 8px rgba(102, 209, 255, 0.35)); }
+.header .logo { width: 21px; height: 33px; }
 .header h1 {
   font-family: var(--pixel);
   font-size: 15px;

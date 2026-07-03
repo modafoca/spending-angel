@@ -53,6 +53,17 @@
 
 * { box-sizing: border-box; }
 
+/* The $-halo mark (same asset as the macOS app), tinted via CSS mask so it
+   picks up the cyan accent + glow. No emoji anywhere. */
+.logo {
+  display: inline-block;
+  background: var(--accent);
+  -webkit-mask: url("mark.svg") center / contain no-repeat;
+  mask: url("mark.svg") center / contain no-repeat;
+  filter: drop-shadow(0 0 7px rgba(102, 209, 255, 0.5));
+  flex: none;
+}
+
 body {
   margin: 0;
   background: var(--bg);
