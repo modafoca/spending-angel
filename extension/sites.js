@@ -3,7 +3,9 @@
 // No chrome.* and no DOM here: shared by background.js, the popup, the options
 // page, the content script, AND the tests. This is where the allowlist /
 // blocklist / mode logic lives so all four surfaces agree on what "watched"
-// means. Everything is local — these lists never leave the machine.
+// means. Also home to the pairing-token normalizer (saNormalizeBridgeToken) so
+// the options page and the service worker agree on what a valid token looks
+// like. Everything is local — these lists and the token never leave the machine.
 
 // Turn a URL or raw host into a bare, comparable host: no protocol, no path,
 // no port, no leading "www.", lowercased. Returns "" for junk / non-http URLs
@@ -76,9 +78,19 @@ function saRemoveFromList(list, host) {
   return (list || []).filter((h) => h !== target);
 }
 
+// Bridge token as the user pasted it → canonical form, or "" for junk.
+// Accepts surrounding whitespace and upper-case hex; anything else is rejected
+// so a half-pasted token can't sit in storage looking valid. The app mints
+// 32 random bytes as 64 lowercase hex chars, so the canonical form is exactly
+// what it compares against byte-for-byte.
+function saNormalizeBridgeToken(raw) {
+  const t = String(raw || "").trim().toLowerCase();
+  return /^[0-9a-f]{64}$/.test(t) ? t : "";
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     saNormalizeHost, saHostToOrigins, saShouldWatch, saHostInList,
-    saAddToList, saRemoveFromList,
+    saAddToList, saRemoveFromList, saNormalizeBridgeToken,
   };
 }

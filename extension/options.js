@@ -1,13 +1,59 @@
-// Spending Angel — options page. Full site-list management.
+// Spending Angel — options page. Pairing + full site-list management.
 //
-// Listed mode: an allowlist of sites; each needs a host-permission grant (a
-// Chrome gesture) before the sensor can actually run there. Everywhere mode: a
-// blocklist of sites to leave alone. All local — nothing is sent anywhere.
+// Pairing: the one secret in the whole system is the bridge token the macOS
+// app mints and shows under PAIR SENSOR; the user pastes it here and the
+// service worker sends it as a bearer credential. Listed mode: an allowlist of
+// sites; each needs a host-permission grant (a Chrome gesture) before the
+// sensor can actually run there. Everywhere mode: a blocklist of sites to leave
+// alone. All local — nothing is sent anywhere.
 
 const $ = (id) => document.getElementById(id);
 
 async function state() {
   return chrome.storage.local.get({ saMode: "listed", saAllowlist: [], saBlocklist: [] });
+}
+
+// ---- Pairing (NATIVE-01) ----------------------------------------------------
+
+const TOKEN_JUNK_MSG = "hmm, that doesn't look like a token (64 hex characters)";
+
+async function renderToken() {
+  const { saBridgeToken } = await chrome.storage.local.get({ saBridgeToken: "" });
+  const token = saNormalizeBridgeToken(saBridgeToken);
+  const input = $("token-input");
+  // The stored token is only ever shown masked, via the placeholder, and the
+  // field itself stays empty so a stray keystroke can't corrupt it.
+  input.value = "";
+  if (token) {
+    const tail = token.slice(-4);
+    input.placeholder = `••••…${tail}`;
+    $("token-state").textContent = `Paired — token ends in …${tail}`;
+  } else {
+    input.placeholder = "paste the 64-character token";
+    $("token-state").textContent = "Not paired — the app will not answer until you paste the token.";
+  }
+}
+
+async function saveToken(raw) {
+  const rawTrimmed = String(raw || "").trim();
+  if (rawTrimmed === "") {
+    // Empty save = unpair. The popup reads the three bridge keys with null
+    // defaults, so removing them is the same as nulling them.
+    await chrome.storage.local.remove(["saBridgeToken", "bridgeOk", "bridgeAt", "bridgeWhy"]);
+    await renderToken();
+    return;
+  }
+  const t = saNormalizeBridgeToken(rawTrimmed);
+  if (t === "") {
+    // Half-pasted / junk: keep whatever is stored, say so inline.
+    $("token-state").textContent = TOKEN_JUNK_MSG;
+    return;
+  }
+  // One write: the new token AND a full reset of the bridge status, so the
+  // popup reads "Not tried yet" (not a stale "App not reachable") until the
+  // next intent or "Simulate intent" proves the pairing.
+  await chrome.storage.local.set({ saBridgeToken: t, bridgeOk: null, bridgeAt: null, bridgeWhy: null });
+  await renderToken();
 }
 
 // ---- Mode -------------------------------------------------------------------
@@ -145,6 +191,7 @@ function mkBtn(label, cls, onClick) {
 }
 
 async function renderAll() {
+  await renderToken();
   await renderMode();
   await renderListed();
   await renderBlocked();
@@ -153,6 +200,7 @@ async function renderAll() {
 document.addEventListener("DOMContentLoaded", async () => {
   await renderAll();
 
+  $("token-form").addEventListener("submit", (e) => { e.preventDefault(); saveToken($("token-input").value); });
   document.querySelectorAll('input[name="mode"]').forEach((r) => {
     r.addEventListener("change", () => setMode(r.value));
   });
