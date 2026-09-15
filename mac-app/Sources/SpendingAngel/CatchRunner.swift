@@ -33,6 +33,23 @@ enum CatchRunner {
         return admitted
     }
 
+    /// The bridge's on-duty decision, pure so the off / snoozed / busy / shown
+    /// mapping is unit-tested without AppKit (Round 3): `!enabled` → off; a
+    /// snooze deadline still ahead of `now` → snoozed; otherwise `admit` runs
+    /// the catch and its result decides — the character that performed means
+    /// shown, nil means the overlay was busy. `admit` is only called on the
+    /// on-duty path, so the character pick (which consumes Shake It Up's
+    /// anti-repeat) never happens for a skipped intent. Logging stays where it
+    /// was: `admit` goes through `run` (performed / skipped_busy) and the caller
+    /// writes the off-duty line via `skipOffDuty`.
+    static func decide(enabled: Bool, snoozeUntil: Date?, now: Date,
+                       admit: () -> CharacterID?) -> IntentOutcome {
+        guard enabled else { return .skipped(.off) }
+        if let until = snoozeUntil, until > now { return .skipped(.snoozed) }
+        guard let character = admit() else { return .skipped(.busy) }
+        return .shown(character: character)
+    }
+
     /// The bridge's off-duty branch, here rather than inline in AppDelegate so
     /// the hostname bound is one rule in one place and unit-testable. Nothing is
     /// performed or recorded; the intent is only noted as skipped.

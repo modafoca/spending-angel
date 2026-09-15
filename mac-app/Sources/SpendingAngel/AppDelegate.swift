@@ -16,18 +16,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Only requests carrying the pairing token get this far (the token is
         // read per request, so "regenerate" in the dropdown needs no restart).
         // Real intents respect on/off + snooze (unlike the manual Test button).
-        // CatchRunner asks the overlay first and counts/logs only if admitted;
-        // it also owns the off-duty line so every logged hostname is clipped.
-        let server = BridgeServer(expectedToken: { Store.shared.bridgeToken }) { [weak self] intent in
-            guard Store.shared.onDuty else {
-                CatchRunner.skipOffDuty(hostname: intent.hostname, intentID: intent.id)
-                return
+        // CatchRunner.decide maps that to an outcome the bridge sends back in
+        // the 200 body (Round 3); CatchRunner.run asks the overlay first and
+        // counts/logs only if admitted, and skipOffDuty owns the off-duty line
+        // so every logged hostname is clipped. Log events are unchanged.
+        let server = BridgeServer(expectedToken: { Store.shared.bridgeToken },
+                                  snoozeUntil: { Store.shared.snoozeUntil }) { [weak self] intent in
+            let store = Store.shared
+            let outcome = CatchRunner.decide(enabled: store.enabled, snoozeUntil: store.snoozeUntil, now: Date()) {
+                let character = store.nextCatchCharacter()   // honors Shake It Up
+                let admitted = CatchRunner.run(goal: store.goal, character: character,
+                                               source: "bridge", hostname: intent.hostname, intentID: intent.id,
+                                               perform: { g, c in self?.overlay.performCatch(goal: g, character: c) ?? false },
+                                               record: store.recordCatch)
+                return admitted ? character : nil
             }
-            let character = Store.shared.nextCatchCharacter()   // honors Shake It Up
-            CatchRunner.run(goal: Store.shared.goal, character: character,
-                            source: "bridge", hostname: intent.hostname, intentID: intent.id,
-                            perform: { g, c in self?.overlay.performCatch(goal: g, character: c) ?? false },
-                            record: Store.shared.recordCatch)
+            switch outcome {
+            case .skipped(.off), .skipped(.snoozed):
+                CatchRunner.skipOffDuty(hostname: intent.hostname, intentID: intent.id)
+            case .shown, .skipped(.busy):
+                break   // CatchRunner.run already wrote catch.performed / catch.skipped_busy
+            }
+            return outcome
         }
         // Single-instance guard: if the port's already bound, a copy is already
         // running — quit this one so we never stack two menu-bar icons.

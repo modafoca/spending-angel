@@ -216,9 +216,13 @@ struct DropdownView: View {
             }
             .buttonStyle(.plain)
 
-            // Tertiary — dev Test + Quit as tiny dim links
+            // Tertiary — dev Test + Quit as tiny dim links, the version between
+            // them so "which build is this?" is answerable from the dropdown.
             HStack {
                 linkButton("▶ test", action: onTest)
+                Spacer()
+                Text("v\(AppInfo.version)")
+                    .font(.pixel(8)).foregroundColor(Theme.pxDim)
                 Spacer()
                 linkButton("quit") { NSApplication.shared.terminate(nil) }
             }

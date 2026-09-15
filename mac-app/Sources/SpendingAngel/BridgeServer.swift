@@ -38,6 +38,13 @@ import Network
 /// 413 body cap (all while framing) → 204 OPTIONS → 405 → 404 → 401 (the pure
 /// `gate`) → 400 decode/validate → 429 throttle → 200.
 ///
+/// The app says what it did (Round 3, resolves review S-05 by decision): `200`
+/// means accepted *and handled*, and its JSON body reports the outcome —
+/// `shown` with the character, or `skipped` with `off` / `snoozed` / `busy`.
+/// `429` carries a `throttled` body with `retry_in_s`. Every other status keeps
+/// an empty body. The body is built from the app's own state only (outcome,
+/// snooze deadline, `AppInfo.version`) — nothing request-derived goes back.
+///
 /// The port doubles as a single-instance lock: if it's already bound, another
 /// copy of the app is running, and `onAddressInUse` fires so we can quit.
 final class BridgeServer {
@@ -62,7 +69,12 @@ final class BridgeServer {
     ]
 
     private var listener: NWListener?
-    private let onIntent: (Intent) -> Void
+    /// Hands an accepted intent to the app and gets back what it did with it.
+    private let onIntent: (Intent) -> IntentOutcome
+    /// The current snooze deadline, for the `snooze_until` field of a skipped
+    /// body. A closure rather than a Store so this file stays Store-free and a
+    /// test can pin the body with a fixed date. Default: never snoozed.
+    private let snoozeUntil: () -> Date?
     /// The pairing token the sensor must present. Read per request so the
     /// dropdown's "regenerate" needs no restart and tests need no Store.
     private let expectedToken: () -> String
@@ -80,9 +92,11 @@ final class BridgeServer {
 
     init(expectedToken: @escaping () -> String,
          logThrottle: LogThrottle = LogThrottle(),
-         onIntent: @escaping (Intent) -> Void) {
+         snoozeUntil: @escaping () -> Date? = { nil },
+         onIntent: @escaping (Intent) -> IntentOutcome) {
         self.expectedToken = expectedToken
         self.logThrottle = logThrottle
+        self.snoozeUntil = snoozeUntil
         self.onIntent = onIntent
     }
 
@@ -206,40 +220,104 @@ final class BridgeServer {
         // Only reached for authenticated, valid intents — lastAccepted never moves for a 401/400.
         let now = Date()
         if let last = lastAccepted, now.timeIntervalSince(last) < Self.minCatchInterval {
-            logRejected("bridge.intent_throttled", "dropped — last catch \(Int(now.timeIntervalSince(last)))s ago",
+            let elapsed = now.timeIntervalSince(last)
+            logRejected("bridge.intent_throttled", "dropped — last catch \(Int(elapsed))s ago",
                         ["intent_id": Log.clip(intent.id ?? ""), "hostname": Log.clip(intent.hostname)], via: Log.info)
-            respond(conn, status: 429, timeout: timeout); return
+            respond(conn, status: 429,
+                    body: Self.throttledBody(retryIn: Self.minCatchInterval - elapsed, appVersion: AppInfo.version),
+                    timeout: timeout)
+            return
         }
         lastAccepted = now
 
         Log.info("bridge.intent_received", Log.clip(intent.hostname),
                  ["intent_id": Log.clip(intent.id ?? ""), "trigger": intent.trigger])
-        onIntent(intent)
-        respond(conn, status: 200, timeout: timeout)
+        let outcome = onIntent(intent)
+        respond(conn, status: 200,
+                body: Self.responseBody(outcome, snoozeUntil: snoozeUntil(), appVersion: AppInfo.version),
+                timeout: timeout)
     }
 
-    /// Empty-body response: writes `responseHead(status:)` and closes.
-    private func respond(_ conn: NWConnection, status: Int, timeout: DispatchWorkItem) {
+    /// Writes `responseHead` + `body` in ONE send and closes. Most statuses have
+    /// no body; 200 and 429 carry the JSON outcome (Round 3).
+    private func respond(_ conn: NWConnection, status: Int, body: Data = Data(), timeout: DispatchWorkItem) {
         timeout.cancel()
-        conn.send(content: Data(Self.responseHead(status: status).utf8),
-                  completion: .contentProcessed { _ in conn.cancel() })
+        var packet = Data(Self.responseHead(status: status, bodyLength: body.count).utf8)
+        packet.append(body)
+        conn.send(content: packet, completion: .contentProcessed { _ in conn.cancel() })
     }
 
-    /// The exact bytes of an empty-body response head, pure so the header
-    /// contract is unit-tested and not only curl-checked. Deliberately no
-    /// `Access-Control-*` headers: the extension's service worker is exempt from
-    /// CORS via host_permissions, and a web page must not be able to read (or
-    /// preflight into) this server. `Connection: close` on every status; the
-    /// `WWW-Authenticate` challenge only on 401.
-    static func responseHead(status: Int) -> String {
+    /// The exact bytes of a response head, pure so the header contract is
+    /// unit-tested and not only curl-checked. Deliberately no `Access-Control-*`
+    /// headers: the extension's service worker is exempt from CORS via
+    /// host_permissions, and a web page must not be able to read (or preflight
+    /// into) this server. `Connection: close` on every status; the
+    /// `WWW-Authenticate` challenge only on 401. With a body (`bodyLength > 0`)
+    /// the head also declares `Content-Type: application/json; charset=utf-8`
+    /// and the real length; without one it is byte-for-byte what it was before
+    /// Round 3 (`Content-Length: 0`).
+    static func responseHead(status: Int, bodyLength: Int = 0) -> String {
         var head = "HTTP/1.1 \(status) \(reasons[status] ?? "")\r\n"
-            + "Content-Length: 0\r\n"
-            + "Connection: close\r\n"
+        if bodyLength > 0 {
+            head += "Content-Type: application/json; charset=utf-8\r\n"
+                + "Content-Length: \(bodyLength)\r\n"
+        } else {
+            head += "Content-Length: 0\r\n"
+        }
+        head += "Connection: close\r\n"
         if status == 401 {
             head += "WWW-Authenticate: Bearer realm=\"spending-angel\"\r\n"
         }
         head += "\r\n"
         return head
+    }
+
+    // MARK: - Response bodies (static, unit-tested)
+
+    /// Formatter for `snooze_until`: `2026-09-15T22:43:54Z` — UTC, second
+    /// resolution (ISO8601DateFormatter's default options).
+    static let bodyISO = ISO8601DateFormatter()
+
+    /// The 200 body: what the app did with the intent, so the sensor can show
+    /// "Character shown — Mom" instead of only "Connected". Sorted keys so the
+    /// bytes are pinned by tests:
+    ///   shown   → {"app_version":"0.6.0","character":"mom","result":"shown"}
+    ///   off     → {"app_version":"0.6.0","reason":"off","result":"skipped"}
+    ///   snoozed → … "reason":"snoozed","result":"skipped","snooze_until":"…Z"
+    ///   busy    → {"app_version":"0.6.0","reason":"busy","result":"skipped"}
+    /// `snooze_until` is only present when the reason is `snoozed` and a
+    /// deadline is known. Nothing from the request is echoed back.
+    static func responseBody(_ outcome: IntentOutcome, snoozeUntil: Date?, appVersion: String,
+                             iso: ISO8601DateFormatter = bodyISO) -> Data {
+        var fields: [String: Any] = ["app_version": appVersion]
+        switch outcome {
+        case .shown(let character):
+            fields["result"] = "shown"
+            fields["character"] = character.rawValue
+        case .skipped(let reason):
+            fields["result"] = "skipped"
+            fields["reason"] = reason.rawValue
+            if reason == .snoozed, let until = snoozeUntil {
+                fields["snooze_until"] = iso.string(from: until)
+            }
+        }
+        return json(fields)
+    }
+
+    /// The 429 body, built here because the throttle never reaches the app:
+    /// {"app_version":"0.6.0","reason":"throttled","result":"skipped","retry_in_s":5}.
+    /// `retry_in_s` is the remaining window rounded up and never below 1, so the
+    /// sensor can say "wait 5 s" and never "wait 0 s".
+    static func throttledBody(retryIn seconds: TimeInterval, appVersion: String) -> Data {
+        json(["app_version": appVersion, "reason": "throttled", "result": "skipped",
+              "retry_in_s": max(1, Int(ceil(seconds)))])
+    }
+
+    /// Every value above is a String or an Int, so serialization cannot fail;
+    /// the empty-Data fallback keeps the signature non-throwing without a
+    /// force-unwrap.
+    private static func json(_ fields: [String: Any]) -> Data {
+        (try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys])) ?? Data()
     }
 
     // MARK: - Parsing + validation (static, unit-tested)
@@ -427,4 +505,16 @@ struct Intent: Codable {
     let trigger: String
     let hostname: String
     let ts: Double
+}
+
+/// What the app did with an accepted intent. Serialised into the 200 body by
+/// `BridgeServer.responseBody` so the sensor can tell "the app heard me" from
+/// "a character was on screen" (Round 3). `off` / `snoozed` are the dropdown's
+/// switch and nap; `busy` is the overlay's admission gate (a catch was already
+/// playing). The 429 throttle is not an outcome — the intent never reached the
+/// app — so it has no case here and the bridge builds that body itself.
+enum IntentOutcome: Equatable {
+    case shown(character: CharacterID)
+    case skipped(SkipReason)
+    enum SkipReason: String { case off, snoozed, busy }
 }
