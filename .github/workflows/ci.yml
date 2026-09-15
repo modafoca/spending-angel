@@ -1,5 +1,6 @@
 # Spending Angel — CI (M-F1).
-# Two halves, two jobs: the Swift menu-bar app builds + tests on macOS;
+# Two halves, two jobs: the Swift menu-bar app builds + tests on macOS
+# (macos-15 → Xcode 16, needed for the Swift Testing module);
 # the extension's pure detection logic tests on Linux (fast + free).
 name: CI
 
@@ -10,7 +11,7 @@ on:
 jobs:
   mac-app:
     name: macOS app (build + test)
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - name: Swift version
