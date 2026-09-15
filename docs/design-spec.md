@@ -71,7 +71,7 @@ Pairing is a one-time, human-mediated copy: app dropdown **PAIR SENSOR → Copy*
 { "id": "uuid-string (optional, ≤ 128 UTF-8 bytes)",
   "type": "checkout_intent",
   "trigger": "click" | "load" | "simulated",
-  "hostname": "1..253 UTF-8 bytes after trimming spaces",
+  "hostname": "1..253 UTF-8 bytes after trimming spaces",      ← (superseded by design-spec-r2 item 5: the 253-byte bound is on the raw value; trimming only feeds the non-empty check)
   "ts": 1700000000000 }
 ```
 
@@ -115,7 +115,7 @@ Two things in this block are new relative to the current `respond()` and must be
 | Header bytes (before delimiter) | `maxHeaderBytes = 8_192` | `read()` via `headerExceedsCap(_:delimiter:)` — both branches |
 | Body bytes | `maxBodyBytes = 1_000_000` | `read()` (Content-Length gate, unchanged) |
 | `id` length | `maxIDLength = 128` **UTF-8 bytes** (`i.id.utf8.count`; a UUID is 36) | `validate()` — `"bad id"` → `400` |
-| `hostname` length | 1…253 **UTF-8 bytes** (`host.utf8.count`) after `trimmingCharacters(in: .whitespaces)` | `validate()` — the existing check switches from `host.count` to `host.utf8.count`; ASCII hostnames behave identically |
+| `hostname` length | 1…253 **UTF-8 bytes** (`host.utf8.count`) after `trimmingCharacters(in: .whitespaces)` | `validate()` — the existing check switches from `host.count` to `host.utf8.count`; ASCII hostnames behave identically (superseded by design-spec-r2 item 5: the 253-byte bound is on the raw value; trimming only feeds the non-empty check) |
 | Logged field truncation | `Log.clip(_:max:)` default `max = 256` **UTF-8 bytes**; result is the longest scalar-aligned prefix that fits in `max` bytes, plus `"…"` when cut, so `utf8.count <= max + 3` always holds | Every `BridgeServer` log field derived from request data (`intent_id`, `hostname`) **and** the interpolations inside `validate()`'s problem strings (`type`, `trigger` clipped to 64 bytes) |
 
 ### 3b. Pairing token contract
@@ -177,10 +177,10 @@ Implementation note for `tokenMatches`: convert both to `[UInt8]` via `.utf8`, l
 | `saInitialized` | `bool`, default `false` | `background.seedIfNeeded` | `background.seedIfNeeded` |
 | `saLogs` | `LogEntry[]`, ring of `SA_LOG_MAX = 50` | `log.js saLog` (all surfaces) | `popup.renderEvents` |
 | `lastIntent` | intent object or `null` | `content.sendIntent` (only after policy passes), `popup` simulate | `popup.renderIntent` |
-| `bridgeOk` | `bool \| null` | `background.forward`; `options` token form (reset to `null` on a valid save and on unpair, **new**) | `popup.renderBridge` |
+| `bridgeOk` | `bool \| null` | `background.forward`; `options` token form (reset to `null` on a valid save and on unpair, **new**) | `popup.renderBridge`, `options.renderToken` (Round 2) |
 | `bridgeAt` | epoch ms `\| null` | `background.forward`; `options` token form (reset to `null`, **new**) | `popup.renderBridge` |
 | **`saBridgeToken`** (new) | `string` — 64 lowercase hex, or absent | `options` token form (`set` on valid input, `remove` on empty) | `background.forward`, `options.renderToken` (last 4 chars for the "Paired — …XXXX" state) |
-| **`bridgeWhy`** (new) | `"unpaired" \| "unauthorized" \| "unreachable" \| null` | `background.forward` (set alongside `bridgeOk`; `null` on success/rejected-but-reachable); `options` token form (reset to `null`) | `popup.renderBridge` |
+| **`bridgeWhy`** (new) | `"unpaired" \| "unauthorized" \| "unreachable" \| null` | `background.forward` (set alongside `bridgeOk`; `null` on success/rejected-but-reachable); `options` token form (reset to `null`) | `popup.renderBridge`, `options.renderToken` (Round 2) |
 
 Rule: every other key keeps its type, writers and readers exactly as today. One **meaning** changes: `bridgeOk === false` now also covers "unpaired" and "unauthorized" (previously it only meant "unreachable"), disambiguated by `bridgeWhy`. An old popup running against a new service worker therefore renders those as "App not reachable ✕" — the accepted one-PR degradation (case 3). Nothing new is written by the content script.
 
@@ -402,7 +402,7 @@ Cutting on scalars (not raw bytes + `String(decoding:as:)`) means no U+FFFD repl
 14. **Header delimiter split across chunks, total header < 8 KB.** Accumulates as today; cap check on each pass; proceeds normally.
 15. **950 KB `id` with valid `Content-Length` and valid token.** Body read (≤ 1 MB) → decodes → `validate` → `id.utf8.count > 128` → `"bad id"` → `400`; `bridge.invalid_intent` logs `intent_id` clipped to ≤ 259 bytes (256 + `"…"`). Without a valid token → `401` first and nothing from the body is logged.
 16. **`type` of 900 KB.** `validate` problem string uses `Log.clip(i.type, max: 64)` → bounded log line (≤ 67 bytes of `type` inside it).
-26. **Combining-mark padding (grapheme-cluster attack).** `id` = 128 clusters each of `"a"` + 7 000 × U+0301 (~1.8 MB, but `id.count == 128`): rejected by `Content-Length > maxBodyBytes` → `413` before decoding. A ~900 KB variant that fits the body cap decodes, then `id.utf8.count > 128` → `"bad id"` → `400`, and the logged `intent_id` is ≤ 259 bytes. The same payload shape in `hostname` → `host.utf8.count > 253` → `"bad hostname"`; in `type`/`trigger` → the problem string stays bounded by `Log.clip(_, max: 64)`. None of this holds with `String.count`/`prefix` — hence the byte-based rule in §3a.
+26. **Combining-mark padding (grapheme-cluster attack).** `id` = 128 clusters each of `"a"` + 7 000 × U+0301 (~1.8 MB, but `id.count == 128`): rejected by `Content-Length > maxBodyBytes` → `413` before decoding. A ~900 KB variant that fits the body cap decodes, then `id.utf8.count > 128` → `"bad id"` → `400`, and the logged `intent_id` is ≤ 259 bytes. The same payload shape in `hostname` → `host.utf8.count > 253` → `"bad hostname"`; in `type`/`trigger` → the problem string stays bounded by `Log.clip(_, max: 64)`. None of this holds with `String.count`/`prefix` — hence the byte-based rule in §3a. (superseded by design-spec-r2 item 5: the 253-byte bound is on the raw value; trimming only feeds the non-empty check)
 17. **`Content-Length` absent on `POST /intent` with a token.** Treated as 0 → empty body → `bridge.bad_payload` → `400`. Without a token → `401`.
 18. **`OPTIONS /intent` (any origin, any headers).** `204`, no auth, no CORS headers → a page-originated preflight fails CORS; the extension SW never sends one.
 19. **`Authorization: bearer   <tok>` (lower-case scheme, extra spaces) or `AUTHORIZATION:` header name.** Accepted. `Authorization: Basic xyz` → `401 reason:missing`. `Authorization: Bearer` (empty) → `401 reason:missing`.
