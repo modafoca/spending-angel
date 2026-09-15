@@ -3,8 +3,11 @@
 // The "This site" section is the everyday control: watch / stop-watching (in
 // "listed" mode) or pause / resume (in "everywhere" mode) for the current tab.
 // Full list management lives in the options page. Everything below it is debug.
+// The "App connection" wording comes from status.js, shared with Options, so
+// both surfaces say the same thing about the app.
 
 const $ = (id) => document.getElementById(id);
+const fmtTime = (ms) => new Date(ms).toLocaleTimeString();
 
 // ---- Debug panels (M-F1) ----------------------------------------------------
 
@@ -12,33 +15,40 @@ function renderIntent(intent) {
   $("last-intent").textContent = intent ? JSON.stringify(intent, null, 2) : "none yet";
 }
 
+// Tone → class on a .status line ("neutral" is the bare class).
+function statusClass(tone) {
+  return tone === "neutral" ? "status" : `status ${tone}`;
+}
+
 // App connection. `ok` is what the SW last saw; `why` disambiguates a false:
 // "unpaired" (no token, nothing sent), "unauthorized" (app said 401), or
 // anything else = the app wasn't reachable. The pair hint only shows for the
-// two states the user can fix in Options.
+// two states the user can fix in Options. Wording lives in saConnectionText.
 function renderBridge(ok, at, why) {
   const el = $("bridge-status");
   const hint = $("bridge-hint");
-  const when = at ? new Date(at).toLocaleTimeString() : "";
-  hint.hidden = true;
-  if (ok === null || ok === undefined) {
-    el.textContent = "Not tried yet";
-    el.className = "status";
-  } else if (ok) {
-    el.textContent = `Connected ✓  ${when}`;
-    el.className = "status ok";
-  } else if (why === "unpaired") {
-    el.textContent = "Not paired ✕ — paste the app's token";
-    el.className = "status bad";
-    hint.hidden = false;
-  } else if (why === "unauthorized") {
-    el.textContent = "Token rejected ✕ — re-pair";
-    el.className = "status bad";
-    hint.hidden = false;
-  } else {
-    el.textContent = `App not reachable ✕  ${when}`;
-    el.className = "status bad";
-  }
+  const c = saConnectionText({ bridgeOk: ok, bridgeAt: at, bridgeWhy: why }, fmtTime);
+  el.textContent = c.text;
+  el.className = statusClass(c.tone);
+  hint.hidden = !c.needsPairing;
+}
+
+// What the app did with the last accepted intent (Round 3 body). Kept apart
+// from the connection line: a reachable app can still show nothing.
+function renderLastResult(lastResult) {
+  const el = $("last-result");
+  const r = saLastResultText(lastResult, fmtTime);
+  el.textContent = r.text;
+  el.className = statusClass(r.tone);
+}
+
+// Version handshake: only speaks up when sensor and app disagree on major.minor.
+function renderVersionHint(appVersion) {
+  const el = $("version-hint");
+  const hint = saVersionHint(chrome.runtime.getManifest().version, appVersion);
+  el.textContent = hint || "";
+  el.className = "hint bad";
+  el.hidden = hint === null;
 }
 
 function renderEvents(logs) {
@@ -119,10 +129,13 @@ async function onSiteAction() {
 
 async function loadDebug() {
   const s = await chrome.storage.local.get({
-    lastIntent: null, bridgeOk: null, bridgeAt: null, bridgeWhy: null, saLogs: [],
+    lastIntent: null, bridgeOk: null, bridgeAt: null, bridgeWhy: null,
+    lastResult: null, appVersion: null, saLogs: [],
   });
   renderIntent(s.lastIntent);
   renderBridge(s.bridgeOk, s.bridgeAt, s.bridgeWhy);
+  renderLastResult(s.lastResult);
+  renderVersionHint(s.appVersion);
   renderEvents(s.saLogs);
 }
 
@@ -134,13 +147,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("open-options-pair").addEventListener("click", (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); });
 
   $("simulate").addEventListener("click", async () => {
-    const payload = {
-      id: crypto.randomUUID(),
-      type: "checkout_intent",
-      trigger: "simulated",
-      hostname: "example-shop.test",
-      ts: Date.now(),
-    };
+    const payload = saSimulatedIntent(Date.now());
     console.log("[SA sensor]", payload);
     await chrome.storage.local.set({ lastIntent: payload });
     renderIntent(payload);
@@ -151,7 +158,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (area !== "local") return;
     if (changes.lastIntent) renderIntent(changes.lastIntent.newValue);
     if (changes.saLogs) renderEvents(changes.saLogs.newValue);
-    if (changes.bridgeOk || changes.bridgeAt || changes.bridgeWhy) loadDebug();
+    if (changes.bridgeOk || changes.bridgeAt || changes.bridgeWhy
+        || changes.lastResult || changes.appVersion) loadDebug();
     if (changes.saMode || changes.saAllowlist || changes.saBlocklist) renderSite();
   });
 });

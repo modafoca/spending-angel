@@ -37,6 +37,8 @@
     <section class="panel">
       <h2 class="panel-title">App connection</h2>
       <p id="bridge-status" class="status">—</p>
+      <p id="last-result" class="status">—</p>
+      <p id="version-hint" class="hint bad" hidden></p>
       <p id="bridge-hint" class="hint" hidden><a href="#" id="open-options-pair">Pair in Options →</a></p>
     </section>
 
@@ -45,11 +47,12 @@
       <pre id="events" class="intent">none yet</pre>
     </section>
 
-    <footer class="footer"><span class="version">sensor v0.5 · controls live in the macOS app</span></footer>
+    <footer class="footer"><span class="version">sensor v0.6 · controls live in the macOS app</span></footer>
   </main>
 
   <script src="domains.js"></script>
   <script src="sites.js"></script>
+  <script src="status.js"></script>
   <script src="detect.js"></script>
   <script src="popup.js"></script>
 </body>

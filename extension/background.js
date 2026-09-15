@@ -16,6 +16,9 @@
 //      nothing is sent and the popup shows the unpaired state. Only
 //      {id,type,trigger,hostname,ts} is serialized to the bridge, rebuilt from
 //      named keys (review S-03) — nothing else on the message can travel.
+//      Since Round 3 the app answers 200/429 with a small JSON body saying what
+//      it did (shown / skipped + why); that lands in storage as `lastResult`
+//      so the popup and Options can tell "connected" from "character shown".
 
 importScripts("domains.js", "log.js", "sites.js");
 
@@ -126,6 +129,49 @@ chrome.runtime.onMessage.addListener((msg) => {
   // No async response needed — fire and forget.
 });
 
+// The app's answer body → the `lastResult` record the UI renders. Only the
+// keys the status module knows about are kept; anything else the body carries
+// is dropped here so storage never accumulates fields nobody reads. A missing
+// or unreadable body (an app older than the contract) is "unknown", which the
+// UI turns into an honest "update the app". The trailing four keys tie the
+// answer to the request it belongs to.
+const LAST_RESULT_RESULTS = ["shown", "skipped"];
+
+function lastResultFrom(body, payload) {
+  const out = { result: "unknown" };
+  if (body && typeof body === "object") {
+    if (LAST_RESULT_RESULTS.includes(body.result)) out.result = body.result;
+    if (typeof body.reason === "string") out.reason = body.reason;
+    if (typeof body.character === "string") out.character = body.character;
+    if (typeof body.snooze_until === "string") out.snooze_until = body.snooze_until;
+    if (typeof body.retry_in_s === "number") out.retry_in_s = body.retry_in_s;
+  }
+  out.at = Date.now();
+  out.intent_id = payload.id;
+  out.hostname = payload.hostname;
+  out.trigger = payload.trigger;
+  return out;
+}
+
+// Read the JSON body if there is one. Never throws: an empty body, a non-JSON
+// body, or a Response without json() (older shims) all read as null.
+async function readBody(res) {
+  try {
+    return typeof res.json === "function" ? await res.json() : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Add `appVersion` to a pending write when the body names one (a string);
+// otherwise the stored value is left alone rather than overwritten with junk.
+function withAppVersion(write, body) {
+  if (body && typeof body === "object" && typeof body.app_version === "string") {
+    write.appVersion = body.app_version;
+  }
+  return write;
+}
+
 // Ship one intent to the app. Storage outcome, always written in one set()
 // (fire-and-forget with its own .catch — a torn-down storage must not surface
 // as an unhandled rejection in the worker):
@@ -133,6 +179,10 @@ chrome.runtime.onMessage.addListener((msg) => {
 //   bridgeOk  false → couldn't deliver; bridgeWhy says why:
 //                     "unpaired" (no token, nothing sent), "unauthorized" (401),
 //                     "unreachable" (timeout / network)
+//   lastResult      → on 200 and 429 only, in the SAME set() as the keys above;
+//                     appVersion rides along when the body names one. 401 and
+//                     unreachable leave both untouched — the last real answer
+//                     is still the truth about what the app did.
 async function forward(payload) {
   // Token first, before any timer exists: an unpaired call must leave nothing
   // behind that keeps the worker (or a test's event loop) awake for 4 s.
@@ -176,8 +226,13 @@ async function forward(payload) {
       signal: ctrl.signal,
     });
     if (res.ok) {
-      saLog("info", "bridge.forwarded", payload.hostname, { intent_id: payload.id, ms: Date.now() - t0 });
-      chrome.storage.local.set({ bridgeOk: true, bridgeAt: Date.now(), bridgeWhy: null }).catch(() => {});
+      const body = await readBody(res);
+      const lastResult = lastResultFrom(body, payload);
+      saLog("info", "bridge.forwarded", payload.hostname,
+        { intent_id: payload.id, ms: Date.now() - t0, result: lastResult.result });
+      chrome.storage.local.set(withAppVersion(
+        { bridgeOk: true, bridgeAt: Date.now(), bridgeWhy: null, lastResult }, body,
+      )).catch(() => {});
     } else if (res.status === 401) {
       // The app no longer recognises our token (regenerated, or never matched).
       saLog("error", "bridge.unauthorized", "app rejected the token — re-pair in Options",
@@ -186,7 +241,14 @@ async function forward(payload) {
     } else {
       // App answered but rejected — 429 = within 8 s of the last accepted intent, 400 = bad payload.
       saLog("info", "bridge.rejected", `app answered ${res.status}`, { intent_id: payload.id, status: res.status });
-      chrome.storage.local.set({ bridgeOk: true, bridgeAt: Date.now(), bridgeWhy: null }).catch(() => {});
+      const status = { bridgeOk: true, bridgeAt: Date.now(), bridgeWhy: null };
+      if (res.status === 429) {
+        // A throttle is still an answer about this intent: the body says how
+        // long to wait, and the UI shows it as "too soon after the last catch".
+        const body = await readBody(res);
+        Object.assign(status, withAppVersion({ lastResult: lastResultFrom(body, payload) }, body));
+      }
+      chrome.storage.local.set(status).catch(() => {});
     }
   } catch (e) {
     const why = e && e.name === "AbortError" ? "timed out" : "unreachable";

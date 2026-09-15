@@ -27,6 +27,25 @@
       <p id="token-state" class="note"></p>
     </section>
 
+    <!-- APP STATUS (Round 3): the main place to see what the app is doing -->
+    <section class="card pixel" id="app-card">
+      <h2>App</h2>
+      <dl class="kv">
+        <dt>Connection</dt>
+        <dd id="app-connection">—</dd>
+        <dt>Last request</dt>
+        <dd id="app-last-result">—</dd>
+        <dt>Versions</dt>
+        <dd id="app-versions">—</dd>
+      </dl>
+      <p id="app-version-hint" class="note bad" hidden></p>
+      <div class="sim-row">
+        <button id="app-simulate" class="btn" type="button">Simulate intent</button>
+        <span class="note">Sends a fake checkout through the app so you can see both lines change.</span>
+      </div>
+      <p class="note">Tip: pin the toolbar icon (puzzle piece → pin “Spending Angel — Sensor”) for per-site Watch/Stop and the same status.</p>
+    </section>
+
     <section class="card pixel">
       <h2>Where should the Angel watch?</h2>
       <label class="mode">
@@ -67,11 +86,12 @@
       <ul id="block-list" class="list"></ul>
     </section>
 
-    <footer class="foot">Spending Angel sensor v0.5 · your lists never leave this device</footer>
+    <footer class="foot">Spending Angel sensor v0.6 · your lists never leave this device</footer>
   </main>
 
   <script src="domains.js"></script>
   <script src="sites.js"></script>
+  <script src="status.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

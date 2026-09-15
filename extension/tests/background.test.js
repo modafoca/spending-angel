@@ -12,6 +12,10 @@
 // R-02b:     a failing token read is contained inside forward() (no log, no
 //            write, no fetch, no timer) and the onMessage listener contains a
 //            forward() that still rejects; neither ever leaks a rejection.
+// Round 3:   200 and 429 carry a JSON body saying what the app did; forward()
+//            stores it as `lastResult` (+ `appVersion`) in the SAME set() as
+//            bridgeOk, keeps only the listed keys, reads a missing/invalid body
+//            as "unknown", and never touches either key on 401/unreachable.
 //
 // The real background.js is evaluated in a vm context by tests/harness.js.
 // The abort timer is Node's real setTimeout there, so every test that reaches
@@ -43,6 +47,11 @@ function intent(overrides = {}) {
 
 async function flush(h, n = 3) {
   for (let i = 0; i < n; i++) await h.tick();
+}
+
+// The three connection keys of a bridge write, without the Round 3 result.
+function bridgePart(w) {
+  return { bridgeOk: w.bridgeOk, bridgeAt: w.bridgeAt, bridgeWhy: w.bridgeWhy };
 }
 
 // A permissions impl whose every call parks on a gate the test releases by hand.
@@ -326,7 +335,11 @@ describe("NATIVE-01 forward() pairing token", () => {
     assert.deepEqual(Object.keys(JSON.parse(init.body)), ["id", "type", "trigger", "hostname", "ts"]);
     assert.ok(init.signal, "abort signal attached");
 
-    assert.deepEqual(h.bridgeWrites().at(-1), { bridgeOk: true, bridgeAt: h.clock.now, bridgeWhy: null });
+    // Round 3: the same set() also carries lastResult (the default harness
+    // body is {}, so the app "said nothing" → unknown).
+    const w = h.bridgeWrites().at(-1);
+    assert.deepEqual(bridgePart(w), { bridgeOk: true, bridgeAt: h.clock.now, bridgeWhy: null });
+    assert.equal(w.lastResult.result, "unknown");
     const log = h.logs().find((l) => l.event === "bridge.forwarded");
     assert.ok(log);
     assert.equal(log.level, "info");
@@ -373,7 +386,9 @@ describe("NATIVE-01 forward() pairing token", () => {
     h.message(intent());
     await flush(h);
 
-    assert.deepEqual(h.bridgeWrites().at(-1), { bridgeOk: true, bridgeAt: h.clock.now, bridgeWhy: null });
+    const w = h.bridgeWrites().at(-1);
+    assert.deepEqual(bridgePart(w), { bridgeOk: true, bridgeAt: h.clock.now, bridgeWhy: null });
+    assert.equal(w.lastResult.result, "unknown", "a 429 without a body is still an answer");
     const log = h.logs().find((l) => l.event === "bridge.rejected");
     assert.ok(log);
     assert.equal(log.level, "info");
@@ -390,6 +405,7 @@ describe("NATIVE-01 forward() pairing token", () => {
     await flush(h);
     assert.equal(h.bridgeWrites().at(-1).bridgeOk, true);
     assert.equal(h.logs().find((l) => l.event === "bridge.rejected").status, 400);
+    assert.ok(!("lastResult" in h.bridgeWrites().at(-1)), "a 400 says nothing about an intent");
   });
 
   test("network failure is unreachable", async () => {
@@ -458,7 +474,7 @@ describe("NATIVE-01 forward() pairing token", () => {
     h.message(intent({ id: "second" }));
     await flush(h);
     assert.equal(h.fetches.length, 1);
-    assert.deepEqual(h.bridgeWrites().at(-1), { bridgeOk: true, bridgeAt: h.clock.now, bridgeWhy: null });
+    assert.deepEqual(bridgePart(h.bridgeWrites().at(-1)), { bridgeOk: true, bridgeAt: h.clock.now, bridgeWhy: null });
   });
 
   test("a rejected bridge-status write is swallowed on the unpaired path", async () => {
@@ -534,6 +550,214 @@ describe("NATIVE-01 forward() pairing token", () => {
     assert.equal(unhandled.length, 0, "the listener must contain a rejecting forward()");
     assert.equal(h.fetches.length, 0);
     assert.equal(h.writes.length, 0);
+  });
+});
+
+// ---- Round 3: the app's answer body → lastResult ----------------------------
+
+describe("Round 3 forward() stores what the app said it did", () => {
+  const LAST_KEYS = ["at", "character", "hostname", "intent_id", "reason", "result", "retry_in_s", "snooze_until", "trigger"];
+
+  function answer(status, body) {
+    return async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => {
+        if (body instanceof Error) throw body;
+        return body;
+      },
+    });
+  }
+
+  test("200 with a shown body writes lastResult + appVersion in the same set as bridgeOk", async () => {
+    const h = loadBackground({
+      config: { ...LISTED, saBridgeToken: TOKEN },
+      fetchImpl: answer(200, { app_version: "0.6.0", character: "mom", result: "shown" }),
+    });
+    const msg = intent();
+    h.message(msg);
+    await flush(h);
+
+    const writes = h.writes.filter((w) => "lastResult" in w);
+    assert.equal(writes.length, 1, "exactly one write carries lastResult");
+    const w = writes[0];
+    assert.deepEqual(bridgePart(w), { bridgeOk: true, bridgeAt: h.clock.now, bridgeWhy: null });
+    assert.equal(w.appVersion, "0.6.0", "appVersion rides in the same set");
+    assert.deepEqual(w.lastResult, {
+      result: "shown",
+      character: "mom",
+      at: h.clock.now,
+      intent_id: msg.id,
+      hostname: HOST,
+      trigger: "click",
+    });
+    assert.equal(h.store.lastResult.result, "shown");
+    assert.equal(h.store.appVersion, "0.6.0");
+    const log = h.logs().find((l) => l.event === "bridge.forwarded");
+    assert.ok(log, "the Round 1 log event is unchanged");
+    assert.equal(log.result, "shown");
+  });
+
+  test("200 with a skipped/snoozed body keeps reason and snooze_until", async () => {
+    const h = loadBackground({
+      config: { ...LISTED, saBridgeToken: TOKEN },
+      fetchImpl: answer(200, {
+        app_version: "0.6.0", reason: "snoozed", result: "skipped", snooze_until: "2026-09-15T22:43:54Z",
+      }),
+    });
+    h.message(intent());
+    await flush(h);
+    const r = h.store.lastResult;
+    assert.equal(r.result, "skipped");
+    assert.equal(r.reason, "snoozed");
+    assert.equal(r.snooze_until, "2026-09-15T22:43:54Z");
+    assert.ok(!("character" in r));
+    assert.ok(!("retry_in_s" in r));
+  });
+
+  test("200 with an empty body → result unknown, appVersion untouched", async () => {
+    const h = loadBackground({
+      config: { ...LISTED, saBridgeToken: TOKEN, appVersion: "0.5.0" },
+      fetchImpl: answer(200, new SyntaxError("Unexpected end of JSON input")),
+    });
+    const msg = intent();
+    h.message(msg);
+    await flush(h);
+    const w = h.writes.find((x) => "lastResult" in x);
+    assert.ok(w);
+    assert.equal(w.bridgeOk, true);
+    assert.deepEqual(w.lastResult, {
+      result: "unknown", at: h.clock.now, intent_id: msg.id, hostname: HOST, trigger: "click",
+    });
+    assert.ok(!("appVersion" in w), "no version in the body → the stored one is left alone");
+    assert.equal(h.store.appVersion, "0.5.0");
+  });
+
+  test("200 with an invalid body (not an object, or a Response without json) → unknown", async () => {
+    for (const body of ["hello", 42, null, [1, 2]]) {
+      const h = loadBackground({ config: { ...LISTED, saBridgeToken: TOKEN }, fetchImpl: answer(200, body) });
+      h.message(intent());
+      await flush(h);
+      assert.equal(h.store.lastResult.result, "unknown", `body ${JSON.stringify(body)}`);
+      assert.ok(!("appVersion" in h.store));
+    }
+    // An older shim / a Response with no json() at all.
+    const h = loadBackground({
+      config: { ...LISTED, saBridgeToken: TOKEN },
+      fetchImpl: async () => ({ ok: true, status: 200 }),
+    });
+    h.message(intent());
+    await flush(h);
+    assert.equal(h.store.lastResult.result, "unknown");
+    assert.ok(h.logEvents().includes("bridge.forwarded"));
+    assert.equal(unhandled.length, 0);
+  });
+
+  test("429 with a throttled body → reason throttled + retry_in_s, bridge.rejected still logged", async () => {
+    const h = loadBackground({
+      config: { ...LISTED, saBridgeToken: TOKEN },
+      fetchImpl: answer(429, { app_version: "0.6.0", reason: "throttled", result: "skipped", retry_in_s: 5 }),
+    });
+    const msg = intent();
+    h.message(msg);
+    await flush(h);
+
+    const w = h.bridgeWrites().at(-1);
+    assert.deepEqual(bridgePart(w), { bridgeOk: true, bridgeAt: h.clock.now, bridgeWhy: null });
+    assert.equal(w.appVersion, "0.6.0");
+    assert.deepEqual(w.lastResult, {
+      result: "skipped", reason: "throttled", retry_in_s: 5,
+      at: h.clock.now, intent_id: msg.id, hostname: HOST, trigger: "click",
+    });
+    const log = h.logs().find((l) => l.event === "bridge.rejected");
+    assert.ok(log);
+    assert.equal(log.status, 429);
+    assert.ok(!h.logEvents().includes("bridge.forwarded"));
+  });
+
+  test("401 and unreachable leave lastResult and appVersion untouched", async () => {
+    const prior = { result: "shown", character: "papi", at: 1, intent_id: "old", hostname: HOST, trigger: "click" };
+    const cases = [
+      ["401", async () => ({ ok: false, status: 401, json: async () => ({ app_version: "9.9.9", result: "shown" }) })],
+      ["network", async () => { throw new TypeError("Failed to fetch"); }],
+      ["abort", async () => { const e = new Error("aborted"); e.name = "AbortError"; throw e; }],
+    ];
+    for (const [name, fetchImpl] of cases) {
+      const h = loadBackground({
+        config: { ...LISTED, saBridgeToken: TOKEN, lastResult: prior, appVersion: "0.6.0" },
+        fetchImpl,
+      });
+      h.message(intent());
+      await flush(h);
+      const w = h.bridgeWrites().at(-1);
+      assert.equal(w.bridgeOk, false, name);
+      assert.ok(!("lastResult" in w), `${name}: lastResult not written`);
+      assert.ok(!("appVersion" in w), `${name}: appVersion not written`);
+      assert.deepEqual(h.store.lastResult, prior, `${name}: stored lastResult intact`);
+      assert.equal(h.store.appVersion, "0.6.0");
+    }
+    // Unpaired: nothing is sent, nothing about the app changes either.
+    const h = loadBackground({ config: { ...LISTED, lastResult: prior, appVersion: "0.6.0" } });
+    h.message(intent());
+    await flush(h);
+    assert.ok(!("lastResult" in h.bridgeWrites().at(-1)));
+    assert.deepEqual(h.store.lastResult, prior);
+  });
+
+  test("only the listed keys are stored; unknown body keys and wrong types are dropped", async () => {
+    const h = loadBackground({
+      config: { ...LISTED, saBridgeToken: TOKEN },
+      fetchImpl: answer(200, {
+        app_version: 6,                 // not a string → not stored
+        result: "shown",
+        character: "wizard",
+        reason: 7,                      // wrong type → dropped
+        retry_in_s: "5",                // wrong type → dropped
+        snooze_until: 12345,            // wrong type → dropped
+        debug: { secret: "x" },         // unknown → dropped
+        hostname: "leak.test",          // the body can't rewrite request fields
+        intent_id: "spoofed",
+        at: 0,
+        trigger: "spoofed",
+      }),
+    });
+    const msg = intent();
+    h.message(msg);
+    await flush(h);
+    const r = h.store.lastResult;
+    assert.ok(Object.keys(r).every((k) => LAST_KEYS.includes(k)), `keys: ${Object.keys(r)}`);
+    assert.deepEqual(Object.keys(r).sort(), ["at", "character", "hostname", "intent_id", "result", "trigger"]);
+    assert.equal(r.hostname, HOST);
+    assert.equal(r.intent_id, msg.id);
+    assert.equal(r.trigger, "click");
+    assert.equal(r.at, h.clock.now);
+    assert.ok(!("appVersion" in h.store), "a non-string app_version is ignored");
+    assert.ok(!JSON.stringify(h.writes).includes("leak.test"));
+    assert.ok(!JSON.stringify(h.writes).includes("secret"));
+  });
+
+  test("an unknown result value reads as unknown, keeping the request fields", async () => {
+    const h = loadBackground({
+      config: { ...LISTED, saBridgeToken: TOKEN },
+      fetchImpl: answer(200, { result: "danced", app_version: "0.7.0" }),
+    });
+    h.message(intent());
+    await flush(h);
+    assert.equal(h.store.lastResult.result, "unknown");
+    assert.equal(h.store.appVersion, "0.7.0");
+  });
+
+  test("a rejected write that carries lastResult is still swallowed", async () => {
+    const h = loadBackground({
+      config: { ...LISTED, saBridgeToken: TOKEN },
+      fetchImpl: answer(200, { app_version: "0.6.0", character: "mom", result: "shown" }),
+    });
+    h.failNextSet(new Error("storage gone"), "lastResult");
+    h.message(intent());
+    await flush(h);
+    assert.equal(h.fetches.length, 1);
+    assert.equal(h.bridgeWrites().length, 0);
+    assert.equal(unhandled.length, 0);
   });
 });
 

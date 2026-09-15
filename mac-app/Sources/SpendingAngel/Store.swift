@@ -42,8 +42,10 @@ final class Store: ObservableObject {
 
         // No rollover here: the dropdown derives the displayed count from the
         // current month (`catchCount(inMonthContaining:)`); recordCatch() rolls.
-        monthlyCount = d.integer(forKey: "monthlyCount")
-        countMonth = d.string(forKey: "countMonth") ?? Store.monthKey(Date())
+        let storedCount = d.integer(forKey: "monthlyCount")
+        monthlyCount = storedCount
+        countMonth = Store.restoredCountMonth(stored: d.string(forKey: "countMonth"),
+                                             monthlyCount: storedCount, now: Date())
         lastCatchDate = d.object(forKey: "lastCatchDate") as? Date
 
         // A missing or corrupted token is replaced immediately and persisted
@@ -97,6 +99,30 @@ final class Store: ObservableObject {
         return pick
     }
 
+    // MARK: - Legacy defaults migration (Round 3)
+
+    /// The bare `swift run` binary persisted under the process-name domain
+    /// `SpendingAngel`; the bundled app (`net.modafoca.spendingangel`) starts
+    /// from an empty domain, which would cost the goal, character, counter,
+    /// token (= re-pair) and `installID`. This copies the old domain over
+    /// exactly once. Pure decision + copy, so the matrix is unit-tested with an
+    /// isolated suite: no-op (false) when the marker is already set, when there
+    /// is nothing to copy, or when the new domain already has an identity
+    /// (`installID` or `bridgeToken`) — a fresh install that ran first must not
+    /// be overwritten by a stale one. Must run before any `Log` call: `Log.installID`
+    /// lazily writes a fresh id into the new domain, which would turn this into
+    /// the "already has an identity" no-op.
+    @discardableResult
+    static func migrateLegacyDefaults(legacy: [String: Any]?, into d: UserDefaults,
+                                      marker: String = "migratedFromLegacyDefaults") -> Bool {
+        if d.bool(forKey: marker) { return false }
+        guard let legacy = legacy, !legacy.isEmpty else { return false }
+        if d.object(forKey: "installID") != nil || d.object(forKey: "bridgeToken") != nil { return false }
+        for (key, value) in legacy { d.set(value, forKey: key) }
+        d.set(true, forKey: marker)
+        return true
+    }
+
     // MARK: - Pairing token
 
     /// 32 CSPRNG bytes → 64 lowercase hex chars. Pure; no UserDefaults.
@@ -138,10 +164,24 @@ final class Store: ObservableObject {
     func recordCatch() {
         let now = Date()
         let m = Store.monthKey(now)
-        if m != countMonth { countMonth = m; monthlyCount = 0 }
+        if m != countMonth { monthlyCount = 0 }
+        countMonth = m          // always written through — see restoredCountMonth
         monthlyCount += 1
         lastCatchDate = now
         Log.info("store.catch_recorded", "monthly count now \(monthlyCount)", ["month": m])
+    }
+
+    /// Which month a restored counter belongs to. Before 2026-09 `countMonth` was
+    /// only persisted when a rollover happened inside `recordCatch()`, so an
+    /// install that never crossed a month boundary has a counter on disk and no
+    /// month for it. Defaulting that to *this* month would resurrect a stale
+    /// count as if it were current (the NATIVE-02 symptom by another door), so an
+    /// orphaned counter is tagged "unknown": it displays as 0 and the next catch
+    /// rolls it over. A zero counter with no month is simply this month.
+    static func restoredCountMonth(stored: String?, monthlyCount: Int, now: Date,
+                                   calendar: Calendar = .current) -> String {
+        if let stored = stored { return stored }
+        return monthlyCount > 0 ? "unknown" : monthKey(now, calendar: calendar)
     }
 
     /// The count to *display*: the stored counter only if it belongs to the

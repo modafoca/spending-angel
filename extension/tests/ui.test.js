@@ -14,10 +14,16 @@
 // live from storage and never touches the input's value; only a successful
 // save clears the field. The TOKEN_STATE_* consts are script-scoped in
 // options.js (not on h.ctx), so the expected strings are hardcoded here.
+//
+// Round 3: the Options page grows an "App" card (Connection / Last request /
+// Versions + a Simulate button) and the popup shows a second "last request"
+// line plus a hidden version hint. Both read their wording from status.js;
+// here we only check the pages wire it to the right elements, tones, and
+// storage keys, and that Simulate sends the same payload from either surface.
 
 const { test, describe } = require("node:test");
 const assert = require("node:assert/strict");
-const { loadOptions, loadPopup } = require("./harness.js");
+const { loadOptions, loadPopup, MANIFEST_VERSION } = require("./harness.js");
 
 const TOKEN = "0123456789abcdef".repeat(4);
 const TAIL = TOKEN.slice(-4);
@@ -377,5 +383,216 @@ describe("popup.js renderBridge", () => {
     await h.tick();
     await h.tick();
     assert.match(h.el("bridge-status").textContent, /^Connected ✓/);
+  });
+});
+
+// ---- Round 3: Options "App" card ---------------------------------------------
+
+describe("options.js App card", () => {
+  const AT = 1_700_000_000_000;
+  const when = new Date(AT).toLocaleTimeString();
+  const SHOWN = { result: "shown", character: "mom", at: AT, intent_id: "abc", hostname: "shop.example.test", trigger: "click" };
+  const WIRE_KEYS = ["id", "type", "trigger", "hostname", "ts"];
+
+  test("renderApp fills the three rows from storage and hides the hint when versions agree", async () => {
+    const h = loadOptions({ config: {
+      bridgeOk: true, bridgeAt: AT, bridgeWhy: null, lastResult: SHOWN, appVersion: MANIFEST_VERSION,
+    } });
+    await h.ctx.renderApp();
+    assert.equal(h.el("app-connection").textContent, `Connected ✓  ${when}`);
+    assert.equal(h.el("app-connection").className, "ok");
+    assert.equal(h.el("app-last-result").textContent, `Character shown — Mom · ${when}`);
+    assert.equal(h.el("app-last-result").className, "ok");
+    assert.equal(h.el("app-versions").textContent, `Sensor v${MANIFEST_VERSION} · App v${MANIFEST_VERSION}`);
+    assert.equal(h.el("app-versions").className, "");
+    assert.equal(h.el("app-version-hint").hidden, true);
+    assert.equal(h.el("app-version-hint").textContent, "");
+  });
+
+  test("renderApp with nothing stored reads Not tried yet / No request sent yet / version not seen", async () => {
+    const h = loadOptions({ config: {} });
+    await h.ctx.renderApp();
+    assert.equal(h.el("app-connection").textContent, "Not tried yet");
+    assert.equal(h.el("app-connection").className, "");
+    assert.equal(h.el("app-last-result").textContent, "No request sent yet");
+    assert.equal(h.el("app-last-result").className, "");
+    assert.equal(h.el("app-versions").textContent, `Sensor v${MANIFEST_VERSION} · App version not seen yet`);
+    assert.equal(h.el("app-version-hint").hidden, true);
+  });
+
+  test("renderApp shows the version hint, tone bad, when the app is older", async () => {
+    const h = loadOptions({ config: { bridgeOk: true, bridgeAt: AT, appVersion: "0.1.0" } });
+    await h.ctx.renderApp();
+    assert.equal(h.el("app-versions").textContent, `Sensor v${MANIFEST_VERSION} · App v0.1.0`);
+    assert.equal(h.el("app-version-hint").hidden, false);
+    assert.equal(h.el("app-version-hint").textContent,
+      `Sensor v${MANIFEST_VERSION} · App v0.1.0 — update the app`);
+    assert.match(h.el("app-version-hint").className, /\bbad\b/);
+  });
+
+  test("renderApp carries the bad tone for off / snoozed and the pairing states", async () => {
+    const off = loadOptions({ config: {
+      bridgeOk: false, bridgeAt: AT, bridgeWhy: "unpaired",
+      lastResult: { ...SHOWN, result: "skipped", reason: "off" },
+    } });
+    await off.ctx.renderApp();
+    assert.equal(off.el("app-connection").textContent, "Not paired ✕ — paste the app's token");
+    assert.equal(off.el("app-connection").className, "bad");
+    assert.equal(off.el("app-last-result").textContent,
+      "Not shown — the app is switched off (turn it on in the menu bar)");
+    assert.equal(off.el("app-last-result").className, "bad");
+
+    const busy = loadOptions({ config: {
+      bridgeOk: true, bridgeAt: AT, lastResult: { ...SHOWN, result: "skipped", reason: "busy" },
+    } });
+    await busy.ctx.renderApp();
+    assert.equal(busy.el("app-last-result").textContent, "Not shown — a character was already on screen");
+    assert.equal(busy.el("app-last-result").className, "", "neutral is no class");
+  });
+
+  test("the App card renders on DOMContentLoaded and re-renders live on its keys", async () => {
+    const h = loadOptions({ config: { saBridgeToken: TOKEN, bridgeOk: null } });
+    await h.domReady();
+    assert.equal(h.listeners.storageChanged.length, 1, "still one storage listener");
+    assert.equal(h.el("app-connection").textContent, "Not tried yet");
+    assert.equal(h.el("app-last-result").textContent, "No request sent yet");
+
+    // The worker's one write after a 200: connection + result + version.
+    h.setConfig({ bridgeOk: true, bridgeAt: AT, bridgeWhy: null, lastResult: SHOWN, appVersion: MANIFEST_VERSION });
+    h.storageChanged({
+      bridgeOk: { newValue: true }, bridgeAt: { newValue: AT },
+      lastResult: { newValue: SHOWN }, appVersion: { newValue: MANIFEST_VERSION },
+    });
+    await h.tick();
+    await h.tick();
+    assert.equal(h.el("app-connection").textContent, `Connected ✓  ${when}`);
+    assert.equal(h.el("app-last-result").textContent, `Character shown — Mom · ${when}`);
+    assert.equal(tokenState(h), STATE_PAIRED, "the pairing line flipped in the same event");
+
+    // lastResult alone (a 429 after a 200) re-renders too.
+    const throttled = { ...SHOWN, result: "skipped", reason: "throttled", retry_in_s: 5 };
+    h.setConfig({ lastResult: throttled });
+    h.storageChanged({ lastResult: { newValue: throttled } });
+    await h.tick();
+    await h.tick();
+    assert.equal(h.el("app-last-result").textContent, "Not shown — too soon after the last catch (wait 5 s)");
+
+    // appVersion alone shows the hint.
+    h.setConfig({ appVersion: "0.1.0" });
+    h.storageChanged({ appVersion: { newValue: "0.1.0" } });
+    await h.tick();
+    await h.tick();
+    assert.equal(h.el("app-version-hint").hidden, false);
+
+    // Unrelated keys and other areas leave the card alone.
+    h.el("app-last-result").textContent = "sentinel";
+    h.storageChanged({ saAllowlist: { newValue: [] } });
+    h.setConfig({ lastResult: SHOWN });
+    h.storageChanged({ lastResult: { newValue: SHOWN } }, "sync");
+    await h.tick();
+    await h.tick();
+    assert.equal(h.el("app-last-result").textContent, "sentinel");
+  });
+
+  test("Simulate from Options writes lastIntent and sends the popup's payload shape", async () => {
+    const opts = loadOptions({ config: {} });
+    await opts.domReady();
+    const click = opts.el("app-simulate").listeners.click;
+    assert.ok(click && click.length === 1, "one click listener on #app-simulate");
+    click[0]();
+    await opts.tick();
+    await opts.tick();
+
+    const popup = loadPopup({ config: {} });
+    await popup.domReady();
+    popup.el("simulate").listeners.click[0]();
+    await popup.tick();
+    await popup.tick();
+
+    assert.equal(opts.messages.length, 1);
+    assert.equal(popup.messages.length, 1);
+    const a = opts.messages[0];
+    const b = popup.messages[0];
+    assert.deepEqual(Object.keys(a), WIRE_KEYS);
+    assert.deepEqual(Object.keys(b), WIRE_KEYS);
+    for (const k of ["type", "trigger", "hostname"]) assert.equal(a[k], b[k], k);
+    assert.equal(a.type, "checkout_intent");
+    assert.equal(a.trigger, "simulated");
+    assert.equal(a.hostname, "example-shop.test");
+    assert.equal(a.ts, opts.clock.now);
+    assert.notEqual(a.id, b.id, "fresh ids");
+    assert.deepEqual(opts.store.lastIntent, a, "Options stored the intent like the popup does");
+    assert.deepEqual(popup.store.lastIntent, b);
+  });
+});
+
+// ---- Round 3: popup second line + version hint --------------------------------
+
+describe("popup.js last request + version hint", () => {
+  const AT = 1_700_000_000_000;
+  const when = new Date(AT).toLocaleTimeString();
+  const SHOWN = { result: "shown", character: "papi", at: AT, intent_id: "abc", hostname: "shop.example.test", trigger: "click" };
+
+  test("loadDebug renders both lines and hides the hint when versions agree", async () => {
+    const h = loadPopup({ config: {
+      bridgeOk: true, bridgeAt: AT, bridgeWhy: null, lastResult: SHOWN, appVersion: MANIFEST_VERSION, saLogs: [],
+    } });
+    await h.ctx.loadDebug();
+    assert.equal(h.el("bridge-status").textContent, `Connected ✓  ${when}`);
+    assert.equal(h.el("bridge-status").className, "status ok");
+    assert.equal(h.el("last-result").textContent, `Character shown — Papi · ${when}`);
+    assert.equal(h.el("last-result").className, "status ok");
+    assert.equal(h.el("version-hint").hidden, true);
+    assert.equal(h.el("bridge-hint").hidden, true);
+  });
+
+  test("loadDebug with nothing stored: No request sent yet, neutral, no hint", async () => {
+    const h = loadPopup({ config: {} });
+    await h.ctx.loadDebug();
+    assert.equal(h.el("last-result").textContent, "No request sent yet");
+    assert.equal(h.el("last-result").className, "status");
+    assert.equal(h.el("version-hint").hidden, true);
+  });
+
+  test("a snoozed answer reads bad; the version hint shows when the sensor is older", async () => {
+    const h = loadPopup({ config: {
+      bridgeOk: true, bridgeAt: AT,
+      lastResult: { ...SHOWN, result: "skipped", reason: "snoozed", snooze_until: "2026-09-15T22:43:54Z" },
+      appVersion: "99.0.0",
+    } });
+    await h.ctx.loadDebug();
+    const until = new Date(Date.parse("2026-09-15T22:43:54Z")).toLocaleTimeString();
+    assert.equal(h.el("last-result").textContent, `Not shown — snoozed until ${until} (Wake up in the menu bar)`);
+    assert.equal(h.el("last-result").className, "status bad");
+    assert.equal(h.el("version-hint").hidden, false);
+    assert.equal(h.el("version-hint").textContent,
+      `Sensor v${MANIFEST_VERSION} · App v99.0.0 — reload the extension at chrome://extensions`);
+  });
+
+  test("storage.onChanged on lastResult / appVersion re-renders the popup live", async () => {
+    const h = loadPopup({ config: { bridgeOk: true, bridgeAt: AT } });
+    await h.domReady();
+    assert.equal(h.el("last-result").textContent, "No request sent yet");
+
+    h.setConfig({ lastResult: SHOWN });
+    h.storageChanged({ lastResult: { newValue: SHOWN } });
+    await h.tick();
+    await h.tick();
+    assert.equal(h.el("last-result").textContent, `Character shown — Papi · ${when}`);
+
+    h.setConfig({ appVersion: "0.1.0" });
+    h.storageChanged({ appVersion: { newValue: "0.1.0" } });
+    await h.tick();
+    await h.tick();
+    assert.equal(h.el("version-hint").hidden, false);
+    assert.match(h.el("version-hint").textContent, /update the app$/);
+  });
+
+  test("renderBridge still drives the pair hint through needsPairing", () => {
+    const h = loadPopup();
+    h.ctx.renderBridge(false, AT, "unpaired");
+    assert.equal(h.el("bridge-hint").hidden, false);
+    h.ctx.renderBridge(false, AT, "unreachable");
+    assert.equal(h.el("bridge-hint").hidden, true);
   });
 });

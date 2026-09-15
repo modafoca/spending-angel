@@ -14,8 +14,13 @@
 //   loadBackground({ config, permissions, fetchImpl }) → handle
 //     evaluates domains.js, log.js, sites.js, background.js
 //   loadPopup({ config }) / loadOptions({ config }) → handle
-//     evaluate the page scripts against a tiny element-by-id DOM stub so the
-//     pure-ish render/save functions can be exercised without a browser.
+//     evaluate the page scripts (status.js included, after sites.js, as the
+//     pages load it) against a tiny element-by-id DOM stub so the pure-ish
+//     render/save functions can be exercised without a browser.
+//
+// fetchImpl (background) may return { ok, status, json: async () => ({...}) };
+// the default answers 200 with an empty JSON object, which forward() reads as
+// an app that said nothing about what it did (lastResult.result "unknown").
 
 const vm = require("node:vm");
 const fs = require("node:fs");
@@ -30,6 +35,10 @@ const START_CLOCK = 1_700_000_000_000; // 2023-11-14T22:13:20Z — any fixed epo
 function readSource(name) {
   return fs.readFileSync(path.join(EXT_DIR, name), "utf8");
 }
+
+// The shipped manifest version, so chrome.runtime.getManifest() in the pages
+// answers what Chrome would — tests compare against it rather than a literal.
+const MANIFEST_VERSION = JSON.parse(readSource("manifest.json")).version;
 
 // ---- Shared pieces ----------------------------------------------------------
 
@@ -264,7 +273,7 @@ function loadContentScript({ hostname = "shop.example.test", config = {}, clock,
 function loadBackground({ config = {}, permissions, fetchImpl } = {}) {
   const handle = baseHandle(config);
   handle.permissions = permissions || (async () => true);
-  handle.fetchImpl = fetchImpl || (async () => ({ ok: true, status: 200 }));
+  handle.fetchImpl = fetchImpl || (async () => ({ ok: true, status: 200, json: async () => ({}) }));
   handle.fetches = [];
   handle.registrations = [];
   handle.unregisters = 0;
@@ -388,6 +397,7 @@ function loadPage(files, { config = {}, tabUrl = "" } = {}) {
     runtime: {
       sendMessage(p) { handle.messages.push(p); return Promise.resolve(); },
       openOptionsPage() { handle.openedOptions++; },
+      getManifest() { return { version: MANIFEST_VERSION }; },
     },
     permissions: {
       contains: async () => true,
@@ -418,11 +428,11 @@ function loadPage(files, { config = {}, tabUrl = "" } = {}) {
 }
 
 function loadPopup(opts) {
-  return loadPage(["domains.js", "sites.js", "detect.js", "popup.js"], opts);
+  return loadPage(["domains.js", "sites.js", "status.js", "detect.js", "popup.js"], opts);
 }
 
 function loadOptions(opts) {
-  return loadPage(["domains.js", "sites.js", "options.js"], opts);
+  return loadPage(["domains.js", "sites.js", "status.js", "options.js"], opts);
 }
 
-module.exports = { loadContentScript, loadBackground, loadPopup, loadOptions };
+module.exports = { loadContentScript, loadBackground, loadPopup, loadOptions, MANIFEST_VERSION };

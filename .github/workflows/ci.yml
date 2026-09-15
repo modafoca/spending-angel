@@ -35,6 +35,15 @@ jobs:
         run: swift build --package-path mac-app
       - name: Test
         run: swift test --package-path mac-app
+      - name: Bundle
+        # The real install path, minus the copy into ~/Applications: a release
+        # build wrapped into an ad-hoc-signed .app with its SwiftPM resource
+        # bundle in place. Fails if the plist, the signature or the resources
+        # ever drift from what install.sh expects.
+        run: |
+          scripts/bundle.sh
+          codesign --verify --deep --strict "mac-app/.build/Spending Angel.app"
+          test -d "mac-app/.build/Spending Angel.app/Contents/Resources/SpendingAngel_SpendingAngel.bundle"
 
   extension:
     name: Extension (detection tests)
@@ -46,3 +55,7 @@ jobs:
           node-version: 20
       - name: Test
         run: node --test extension/tests/*.test.js
+      - name: Script syntax
+        # Cheap parse check of the install/update scripts on the Linux job; the
+        # macOS job runs bundle.sh for real.
+        run: bash -n scripts/*.sh
