@@ -23,8 +23,8 @@ The two are paired with a token the app generates and shows you; the Sensor cann
    ```
    or open `mac-app/Package.swift` in Xcode, pick the `SpendingAngel` scheme, Run. A `$`-halo icon appears in the menu bar.
 2. **Load the Sensor.** Open `chrome://extensions`, toggle **Developer mode** on, click **Load unpacked** and pick the **`extension/` folder** (not the repo root — that's where `manifest.json` lives).
-3. **Pair them.** Click the menu-bar icon → under **PAIR SENSOR** hit **COPY**. In Chrome, open the extension's **Options → Pair with the app**, paste the token, **Save**. The options page should now read "Paired — token ends in …XXXX".
-4. **Verify.** Click the toolbar icon → **Simulate intent**. "App connection" should flip to **Connected ✓** and the character should appear on screen.
+3. **Pair them.** Click the menu-bar icon → under **PAIR SENSOR** hit **COPY**. In Chrome, open the extension's **Options → Pair with the app**, paste the token, **Save**. The options page now reads "Token saved — waiting for the app to confirm (…XXXX)". Step 4 turns that into "Paired".
+4. **Verify.** Click the toolbar icon → **Simulate intent**. "App connection" should flip to **Connected ✓**, the character should appear on screen, and the options page (if open) flips to "Paired — token ends in …XXXX". If it says "the app isn't answering yet", the app is not running — start it and simulate again.
 
 > **Pulling this change onto an existing install?** Reload the extension on `chrome://extensions` and pair once — older builds had no token, and the app now answers `401` without one.
 
@@ -77,7 +77,7 @@ The token is the only secret in the system, and it never leaves the machine: the
 
 ## Security note
 
-The bridge listens on loopback only. Every request needs the bearer token (constant-time compare); a wrong or missing one gets `401`, and nothing from the body is decoded or logged. There are no CORS headers, so a web page cannot read a response even if it manages to reach the port. Headers, body and intent `id` are capped (8 KB / 1 MB / 128 bytes) and logged fields are truncated. If you suspect the token leaked, regenerate it from the PAIR SENSOR row in the dropdown and paste the new one into Options; the old one stops working immediately.
+The bridge listens on loopback only. Every request needs the bearer token (constant-time compare); a wrong or missing one gets `401`, and nothing from the body is decoded or logged. There are no CORS headers, so a web page cannot read a response even if it manages to reach the port. Headers, body and intent `id` are capped (8 KB / 1 MB / 128 bytes), logged fields are truncated, and rejection log lines are rate-limited to one per second per event. If you suspect the token leaked, regenerate it from the PAIR SENSOR row in the dropdown and paste the new one into Options; the old one stops working immediately.
 
 ## File map
 

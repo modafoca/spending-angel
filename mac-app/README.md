@@ -103,7 +103,11 @@ Events worth grepping for: `bridge.listening`, `bridge.unauthorized`,
 `bridge.intent_received`, `bridge.intent_throttled`, `catch.performed`,
 `catch.skipped_busy`, `catch.skipped_off_duty`, `store.token_generated`,
 `store.token_regenerated`, `pair.token_copied`. `intent_id` traces one catch from the
-extension to the overlay.
+extension to the overlay. Rejection events (`bridge.unauthorized`, `bridge.bad_request`,
+`bridge.bad_payload`, `bridge.invalid_intent`, `bridge.intent_throttled`) are written at
+most once per second per event (per reason for `bridge.unauthorized`); the next line
+after a burst carries `suppressed: "<n>"` with the number dropped and `suppressed_since`
+with the time of the first drop.
 
 ## Tests
 
