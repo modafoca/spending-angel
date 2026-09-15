@@ -8,8 +8,14 @@
 // host-permission grant (a Chrome gesture) before the sensor can actually run
 // there. Everywhere mode: a blocklist of sites to leave alone. All local —
 // nothing is sent anywhere.
+//
+// Round 3: this page is the main status surface. The "App" card shows the
+// connection, what the app did with the last request, and the version pair —
+// the wording comes from status.js, shared with the popup, and re-renders live
+// from storage so "Simulate intent" here shows both lines change.
 
 const $ = (id) => document.getElementById(id);
+const fmtTime = (ms) => new Date(ms).toLocaleTimeString();
 
 async function state() {
   return chrome.storage.local.get({ saMode: "listed", saAllowlist: [], saBlocklist: [] });
@@ -76,6 +82,44 @@ async function saveToken(raw) {
   await chrome.storage.local.set({ saBridgeToken: t, bridgeOk: null, bridgeAt: null, bridgeWhy: null });
   $("token-input").value = "";
   await renderToken();
+}
+
+// ---- App status card (Round 3) ---------------------------------------------
+
+// Tone → class on a .kv value ("neutral" is no class at all).
+function setKv(id, { text, tone }) {
+  const el = $(id);
+  el.textContent = text;
+  el.className = tone === "neutral" ? "" : tone;
+}
+
+async function renderApp() {
+  const s = await chrome.storage.local.get({
+    bridgeOk: null, bridgeAt: null, bridgeWhy: null, lastResult: null, appVersion: null,
+  });
+  const sensor = chrome.runtime.getManifest().version;
+  setKv("app-connection", saConnectionText(s, fmtTime));
+  setKv("app-last-result", saLastResultText(s.lastResult, fmtTime));
+  // The app's version only arrives with a Round 3 body; before that, say so
+  // instead of pretending.
+  setKv("app-versions", {
+    text: typeof s.appVersion === "string"
+      ? `Sensor v${sensor} · App v${s.appVersion}`
+      : `Sensor v${sensor} · App version not seen yet`,
+    tone: "neutral",
+  });
+  const hint = saVersionHint(sensor, s.appVersion);
+  $("app-version-hint").textContent = hint || "";
+  $("app-version-hint").className = "note bad";
+  $("app-version-hint").hidden = hint === null;
+}
+
+// Same payload and same path as the popup's Simulate button: store the intent
+// and hand it to the service worker, which forwards it to the app.
+async function simulateIntent() {
+  const payload = saSimulatedIntent(Date.now());
+  await chrome.storage.local.set({ lastIntent: payload });
+  chrome.runtime.sendMessage(payload).catch(() => {});
 }
 
 // ---- Mode -------------------------------------------------------------------
@@ -214,6 +258,7 @@ function mkBtn(label, cls, onClick) {
 
 async function renderAll() {
   await renderToken();
+  await renderApp();
   await renderMode();
   await renderListed();
   await renderBlocked();
@@ -229,6 +274,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("add-form").addEventListener("submit", (e) => { e.preventDefault(); addSite($("add-input").value); });
   $("pause-form").addEventListener("submit", (e) => { e.preventDefault(); addBlocked($("pause-input").value); });
   $("enable-all").addEventListener("click", enableAll);
+  $("app-simulate").addEventListener("click", () => { simulateIntent().catch(() => {}); });
 
   chrome.permissions.onAdded.addListener(renderListed);
   chrome.permissions.onRemoved.addListener(renderListed);
@@ -242,5 +288,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Contained: a storage that rejects while the page is tearing down must
     // not surface as an unhandled rejection (same pattern as the worker).
     if (changes.saBridgeToken || changes.bridgeOk || changes.bridgeWhy) renderToken().catch(() => {});
+    // The App card follows the same keys plus the two the worker writes from
+    // the app's answer body.
+    if (changes.bridgeOk || changes.bridgeAt || changes.bridgeWhy
+        || changes.lastResult || changes.appVersion) renderApp().catch(() => {});
   });
 });

@@ -30,6 +30,25 @@
 .mode strong { color: var(--accent); font-weight: 700; }
 .note { font-size: 12px; color: var(--dim); margin: 12px 0 0; line-height: 1.5; }
 
+/* App card: label / value rows. Values in mono like the popup's status lines;
+   the ok / bad tones are the popup's two rules, copied so both surfaces match. */
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 0; }
+.kv dt {
+  font-family: var(--pixel);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--dim);
+  padding-top: 2px;
+}
+.kv dd { margin: 0; font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--dim); overflow-wrap: anywhere; }
+.kv dd.ok { color: var(--accent); text-shadow: 0 0 6px rgba(102, 209, 255, 0.4); }
+.kv dd.bad { color: #ff8a7a; }
+.note.bad { color: #ff8a7a; }
+.sim-row { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.sim-row .note { margin: 0; flex: 1; }
+.sim-row .btn { flex: none; }
+
 .add-row { display: flex; gap: 9px; margin-bottom: 16px; }
 .add-row .field { flex: 1; }
 
