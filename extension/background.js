@@ -13,7 +13,9 @@
 //      http://127.0.0.1 without the page's mixed-content / private-network limits.
 //      The SW authenticates to the bridge with the pairing token the app showed
 //      the user (Authorization: Bearer <token>, NATIVE-01). No token stored →
-//      nothing is sent and the popup shows the unpaired state.
+//      nothing is sent and the popup shows the unpaired state. Only
+//      {id,type,trigger,hostname,ts} is serialized to the bridge, rebuilt from
+//      named keys (review S-03) — nothing else on the message can travel.
 
 importScripts("domains.js", "log.js", "sites.js");
 
@@ -101,7 +103,12 @@ function syncContentScripts() {
   return scriptSyncTail;
 }
 
-chrome.runtime.onInstalled.addListener(async () => { await seedIfNeeded(); await syncContentScripts(); });
+chrome.runtime.onInstalled.addListener(() => {
+  // Contained like every other listener (review R2-03): a storage that rejects
+  // at install/update time must not become an unhandled rejection in the
+  // worker. Nothing is logged — a dead storage can't take a log line either.
+  seedIfNeeded().then(() => syncContentScripts()).catch(() => {});
+});
 chrome.runtime.onStartup.addListener(() => { syncContentScripts(); });
 chrome.permissions.onAdded.addListener(() => { syncContentScripts(); });
 chrome.permissions.onRemoved.addListener(() => { syncContentScripts(); });
@@ -113,7 +120,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // ---- Intent forwarding (M-F1) ----------------------------------------------
 
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg && msg.type === "checkout_intent") forward(msg);
+  // Containment: forward() owns its own error handling, but a rejection that
+  // still escapes must not become an unhandled rejection in the worker.
+  if (msg && msg.type === "checkout_intent") forward(msg).catch(() => {});
   // No async response needed — fire and forget.
 });
 
@@ -127,8 +136,15 @@ chrome.runtime.onMessage.addListener((msg) => {
 async function forward(payload) {
   // Token first, before any timer exists: an unpaired call must leave nothing
   // behind that keeps the worker (or a test's event loop) awake for 4 s.
-  const { saBridgeToken } = await chrome.storage.local.get({ saBridgeToken: "" });
-  const token = saNormalizeBridgeToken(saBridgeToken);
+  let token = "";
+  try {
+    const { saBridgeToken } = await chrome.storage.local.get({ saBridgeToken: "" });
+    token = saNormalizeBridgeToken(saBridgeToken);
+  } catch (e) {
+    // Storage is gone (worker torn down / extension reloaded). Log nothing —
+    // saLog would write to the same dead storage — set nothing, send nothing.
+    return;
+  }
   if (token === "") {
     saLog("info", "bridge.unpaired",
       "no bridge token — open Options and paste the token from the app's PAIR SENSOR row",
@@ -137,6 +153,18 @@ async function forward(payload) {
     return;
   }
 
+  // The wire payload is rebuilt from named keys (review S-03): whatever else a
+  // runtime message carries — a page can't reach onMessage, but a future popup
+  // or a bug could — never leaves the worker. Exactly the five keys the app's
+  // validate() knows about, in this order.
+  const wire = {
+    id: payload.id,
+    type: payload.type,
+    trigger: payload.trigger,
+    hostname: payload.hostname,
+    ts: payload.ts,
+  };
+
   const t0 = Date.now();
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), BRIDGE_TIMEOUT_MS);
@@ -144,7 +172,7 @@ async function forward(payload) {
     const res = await fetch(BRIDGE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(wire),
       signal: ctrl.signal,
     });
     if (res.ok) {

@@ -2,10 +2,12 @@
 //
 // Pairing: the one secret in the whole system is the bridge token the macOS
 // app mints and shows under PAIR SENSOR; the user pastes it here and the
-// service worker sends it as a bearer credential. Listed mode: an allowlist of
-// sites; each needs a host-permission grant (a Chrome gesture) before the
-// sensor can actually run there. Everywhere mode: a blocklist of sites to leave
-// alone. All local — nothing is sent anywhere.
+// service worker sends it as a bearer credential. The status line is
+// re-rendered live from storage; the input field is only ever cleared by a
+// successful save. Listed mode: an allowlist of sites; each needs a
+// host-permission grant (a Chrome gesture) before the sensor can actually run
+// there. Everywhere mode: a blocklist of sites to leave alone. All local —
+// nothing is sent anywhere.
 
 const $ = (id) => document.getElementById(id);
 
@@ -15,23 +17,41 @@ async function state() {
 
 // ---- Pairing (NATIVE-01) ----------------------------------------------------
 
-const TOKEN_JUNK_MSG = "hmm, that doesn't look like a token (64 hex characters)";
+const TOKEN_STATE_NONE        = "Not paired — the app will not answer until you paste the token.";
+const TOKEN_STATE_SAVED       = (tail) => `Token saved — waiting for the app to confirm (…${tail}). Try "Simulate intent" in the popup.`;
+const TOKEN_STATE_UNREACHABLE = (tail) => `Token saved — the app isn't answering yet (…${tail}). Is Spending Angel running?`;
+const TOKEN_STATE_PAIRED      = (tail) => `Paired — token ends in …${tail}`;
+const TOKEN_STATE_REJECTED    = (tail) => `Token rejected — copy it again from PAIR SENSOR (…${tail})`;
+const TOKEN_JUNK_MSG          = "hmm, that doesn't look like a token (64 hex characters)";
+
+// Which pairing line to show for a stored token. "Paired" is a claim the app
+// has to earn: only a real 200 (bridgeOk === true) unlocks it. A save resets
+// the bridge keys to null, so a fresh save always reads as "waiting". An app
+// that stopped answering keeps the "Token saved" prefix (the token is fine)
+// and says what to check instead of inviting a retry that fails the same way.
+function tokenStateText(bridgeOk, bridgeWhy, tail) {
+  if (bridgeOk === true) return TOKEN_STATE_PAIRED(tail);
+  if (bridgeWhy === "unauthorized") return TOKEN_STATE_REJECTED(tail);
+  if (bridgeWhy === "unreachable") return TOKEN_STATE_UNREACHABLE(tail);
+  return TOKEN_STATE_SAVED(tail);
+}
 
 async function renderToken() {
-  const { saBridgeToken } = await chrome.storage.local.get({ saBridgeToken: "" });
+  const { saBridgeToken, bridgeOk, bridgeWhy } =
+    await chrome.storage.local.get({ saBridgeToken: "", bridgeOk: null, bridgeWhy: null });
   const token = saNormalizeBridgeToken(saBridgeToken);
   const input = $("token-input");
-  // The stored token is only ever shown masked, via the placeholder, and the
-  // field itself stays empty so a stray keystroke can't corrupt it.
-  input.value = "";
-  if (token) {
-    const tail = token.slice(-4);
-    input.placeholder = `••••…${tail}`;
-    $("token-state").textContent = `Paired — token ends in …${tail}`;
-  } else {
+  // Placeholder + status only. The stored token is only ever shown masked, via
+  // the placeholder; the field's value belongs to the user (a paste in
+  // progress) and is cleared by saveToken on success, never by a re-render.
+  if (!token) {
     input.placeholder = "paste the 64-character token";
-    $("token-state").textContent = "Not paired — the app will not answer until you paste the token.";
+    $("token-state").textContent = TOKEN_STATE_NONE;
+    return;
   }
+  const tail = token.slice(-4);
+  input.placeholder = `••••…${tail}`;
+  $("token-state").textContent = tokenStateText(bridgeOk, bridgeWhy, tail);
 }
 
 async function saveToken(raw) {
@@ -40,6 +60,7 @@ async function saveToken(raw) {
     // Empty save = unpair. The popup reads the three bridge keys with null
     // defaults, so removing them is the same as nulling them.
     await chrome.storage.local.remove(["saBridgeToken", "bridgeOk", "bridgeAt", "bridgeWhy"]);
+    $("token-input").value = "";       // the field never carries the real token past a save
     await renderToken();
     return;
   }
@@ -53,6 +74,7 @@ async function saveToken(raw) {
   // popup reads "Not tried yet" (not a stale "App not reachable") until the
   // next intent or "Simulate intent" proves the pairing.
   await chrome.storage.local.set({ saBridgeToken: t, bridgeOk: null, bridgeAt: null, bridgeWhy: null });
+  $("token-input").value = "";
   await renderToken();
 }
 
@@ -210,4 +232,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   chrome.permissions.onAdded.addListener(renderListed);
   chrome.permissions.onRemoved.addListener(renderListed);
+
+  // Live pairing status: "Simulate intent" in the popup (or the next real
+  // intent) flips this page from "Token saved — waiting…" to "Paired — …"
+  // without a reload. renderToken never touches the input's value, so a paste
+  // in progress survives the flip.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local") return;
+    // Contained: a storage that rejects while the page is tearing down must
+    // not surface as an unhandled rejection (same pattern as the worker).
+    if (changes.saBridgeToken || changes.bridgeOk || changes.bridgeWhy) renderToken().catch(() => {});
+  });
 });

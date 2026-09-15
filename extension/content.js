@@ -10,9 +10,11 @@
 //   * Only user-gesture clicks count (e.isTrusted) — a page dispatching
 //     synthetic MouseEvents on its own "Buy now" cannot summon a character.
 //   * The user's site policy (mode + lists) is re-read from storage on EVERY
-//     event, never captured at injection. Chrome does not remove an already
-//     injected script when the service worker unregisters it, so a tab paused
-//     or unlisted after load must go quiet without a navigation.
+//     event, never captured at injection, and a denied event is dropped
+//     silently — no log line, so a paused site's name never reaches the ring.
+//     Chrome does not remove an already injected script when the service
+//     worker unregisters it, so a tab paused or unlisted after load must go
+//     quiet without a navigation.
 //
 // Loaded after domains.js, log.js, detect.js, sites.js (which define the
 // globals used below).
@@ -36,7 +38,9 @@
       // single oracle: listed → host in allowlist; everywhere → not blocklisted.
       const cfg = await chrome.storage.local.get({ saMode: "listed", saAllowlist: [], saBlocklist: [] });
       if (!saShouldWatch(host, { mode: cfg.saMode, allowlist: cfg.saAllowlist, blocklist: cfg.saBlocklist })) {
-        saLog("debug", "sensor.suppressed", `${trigger} on ${host} — not watched right now`);
+        // Not watched right now: nothing is logged, stored or sent (review R-01).
+        // A paused site is the user's "leave me alone" — its name must not land
+        // in the console or the saLogs ring, and the popup must not learn of it.
         return;
       }
 
@@ -118,5 +122,7 @@
     }
   }
 
-  main();
+  // Boot is fire-and-forget; a storage read that rejects at injection time
+  // (context already invalidated) must not surface in the page's console.
+  void main().catch(() => {});
 })();

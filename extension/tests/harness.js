@@ -9,7 +9,7 @@
 // Not a *.test.js file on purpose: the CI glob never runs it directly.
 //
 // Loaders (design-spec §6a):
-//   loadContentScript({ hostname, config, clock }) → handle
+//   loadContentScript({ hostname, config, clock, failFirstGet }) → handle
 //     evaluates domains.js, log.js, detect.js, sites.js, content.js
 //   loadBackground({ config, permissions, fetchImpl }) → handle
 //     evaluates domains.js, log.js, sites.js, background.js
@@ -47,10 +47,28 @@ function makeClock() {
 }
 
 // chrome.storage.local over an in-memory object. Two `get` forms mirror Chrome:
-// the promise form (content/background) and the callback form (log.js), which
-// never rejects and never returns a Promise.
+// the promise form (content/background/log.js) and the callback form, which
+// never rejects and never returns a Promise. Nothing shipped uses the callback
+// form any more (log.js moved to the promise form in review R-02); it is kept
+// for fidelity so a future callback-form caller still works.
+//
+// The promise-form snapshot is taken EAGERLY at call time, like Chrome's IPC
+// answer: two saLog calls in one synchronous turn both read the pre-write ring
+// and one line is lost (design-spec-r2 edge case 28). Tests that need N lines
+// in the ring flush between calls; the harness does not try to serialize them.
 function makeStorage(handle) {
   const { store } = handle;
+
+  // failNextGet(err, key): does the armed failure apply to THIS read? Without a
+  // key any promise-form get matches; with one, match on the KEYS the caller
+  // asked for (never on default values), by defaults form.
+  function getMatches(defaults, key) {
+    if (!key) return true;
+    if (defaults === null || defaults === undefined) return true;
+    if (typeof defaults === "string") return defaults === key;
+    if (Array.isArray(defaults)) return defaults.includes(key);
+    return key in defaults;
+  }
 
   function snapshot(defaults) {
     if (defaults === null || defaults === undefined) return Object.assign({}, store);
@@ -73,10 +91,10 @@ function makeStorage(handle) {
         Promise.resolve().then(() => cb(snapshot(defaults)));
         return undefined;
       }
-      if (handle.pendingGetError) {
-        const err = handle.pendingGetError;
+      const pending = handle.pendingGetError;
+      if (pending && getMatches(defaults, pending.key)) {
         handle.pendingGetError = null;
-        return Promise.reject(err);
+        return Promise.reject(pending.err);
       }
       return Promise.resolve(snapshot(defaults));
     },
@@ -130,13 +148,21 @@ function baseHandle(config) {
     pendingSetError: null,
   };
   handle.setConfig = (obj) => { Object.assign(handle.store, obj); };
-  handle.failNextGet = (err) => { handle.pendingGetError = err; };
+  // failNextGet(err, key): reject the next promise-form get() — or, with `key`,
+  // the next one that asks for that key — once. Scope it: log.js's ring read
+  // (`get({ saLogs: [] })`) is a promise-form get too, so an unscoped knob armed
+  // while a saLog chain is still pending is consumed by the ring read instead
+  // of the read under test. Unscoped arming is only safe after a flush.
+  handle.failNextGet = (err, key) => { handle.pendingGetError = { err, key }; };
   handle.failNextSet = (err, key) => { handle.pendingSetError = { err, key }; };
   handle.tick = () => new Promise((r) => setImmediate(r));
   // Convenience over handle.store.saLogs (log.js keeps the ring there).
   handle.logs = () => handle.store.saLogs || [];
   handle.logEvents = () => handle.logs().map((l) => l.event);
   handle.lastLog = () => handle.logs().at(-1);
+  // Everything the scripts printed, as one string — for "this hostname appears
+  // nowhere" assertions (design-spec-r2 edge case 6).
+  handle.consoleText = () => JSON.stringify(handle.console);
   return handle;
 }
 
@@ -148,10 +174,17 @@ function evaluate(ctx, files) {
 
 // ---- Content script ---------------------------------------------------------
 
-function loadContentScript({ hostname = "shop.example.test", config = {}, clock } = {}) {
+// failFirstGet: `{ err, key }` (or a bare Error) armed BEFORE the scripts are
+// evaluated, so main()'s boot read is the one that fails — the handle does not
+// exist yet when a test could otherwise arm it (design-spec-r2 edge case 4).
+function loadContentScript({ hostname = "shop.example.test", config = {}, clock, failFirstGet } = {}) {
   const handle = baseHandle(config);
   if (clock) handle.clock = clock;
   handle.hostname = hostname;
+  if (failFirstGet) {
+    const spec = failFirstGet instanceof Error ? { err: failFirstGet } : failFirstGet;
+    handle.failNextGet(spec.err, spec.key);
+  }
   handle.messages = [];
   handle.timers = [];
 

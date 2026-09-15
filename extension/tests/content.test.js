@@ -7,12 +7,18 @@
 // EXT-02: only user-gesture clicks (e.isTrusted) count — a page dispatching
 //         synthetic MouseEvents must not produce an intent, a log line, or a
 //         storage write.
+// R-01:   a denied event is dropped SILENTLY (review 2026-09): no log line, no
+//         console line, no write, no message — a paused site's name never
+//         reaches the ring. `sensor.suppressed` is retired; the proof of
+//         suppression is the absence of everything.
+// R-02c:  boot is `void main().catch(() => {})` — a storage read that rejects
+//         at injection leaves the click path armed and nothing in the console.
 //
 // The real content.js is evaluated in a vm context by tests/harness.js.
 
 const { test, describe, after } = require("node:test");
 const assert = require("node:assert/strict");
-const { loadContentScript } = require("./harness.js");
+const { loadContentScript, loadBackground } = require("./harness.js");
 
 // sendIntent's try/catch must swallow a rejecting chrome.storage call; if it
 // ever leaks, this guard turns the leak into a failing test instead of a
@@ -21,11 +27,30 @@ const unhandled = [];
 process.on("unhandledRejection", (e) => { unhandled.push(e); });
 
 const HOST = "shop.example.test";
+// A name that cannot occur by accident in any fixture, log template or
+// harness default: if it shows up anywhere, the sensor leaked a paused site.
+const PRIVATE_HOST = "zq-private-shop-7731.test";
+const TOKEN = "0123456789abcdef".repeat(4);
 const LISTED = { saMode: "listed", saAllowlist: [HOST], saBlocklist: [] };
 const EVERYWHERE = { saMode: "everywhere", saAllowlist: [], saBlocklist: [] };
 
 const lastIntentWrites = (h) => h.writes.filter((w) => "lastIntent" in w);
 const countEvent = (h, ev) => h.logEvents().filter((e) => e === ev).length;
+
+// Silent suppression, in one place: nothing logged, printed, written or sent.
+// The policy lists themselves (saAllowlist / saBlocklist) are the user's own
+// input and legitimately carry the hostname, so "no trace in storage" is
+// judged on what the SENSOR wrote — the ring, lastIntent and every set().
+function assertNoTrace(h, hostname) {
+  assert.equal(h.messages.length, 0, "no message");
+  assert.equal(h.writes.length, 0, "no storage write");
+  assert.equal(h.logs().length, 0, "no log line");
+  assert.equal(h.console.length, 0, "no console line");
+  const sensorState = { saLogs: h.store.saLogs, lastIntent: h.store.lastIntent, writes: h.writes };
+  assert.ok(!JSON.stringify(sensorState).includes(hostname), "hostname absent from what the sensor stored");
+  assert.ok(!JSON.stringify(h.messages).includes(hostname), "hostname absent from messages");
+  assert.ok(!h.consoleText().includes(hostname), "hostname absent from console output");
+}
 
 async function flush(h, n = 2) {
   for (let i = 0; i < n; i++) await h.tick();
@@ -64,8 +89,8 @@ describe("EXT-01 policy per event", () => {
 
     assert.equal(h.messages.length, 0);
     assert.equal(lastIntentWrites(h).length, 0);
-    assert.equal(h.lastLog().event, "sensor.suppressed");
-    assert.equal(h.lastLog().level, "debug");
+    assert.equal(h.logs().length, 0, "silent: no log line for a denied event");
+    assert.equal(h.console.length, 0, "silent: no console line either");
   });
 
   test("everywhere: site paused after injection is suppressed without navigation", async () => {
@@ -76,8 +101,8 @@ describe("EXT-01 policy per event", () => {
 
     assert.equal(h.messages.length, 0);
     assert.equal(lastIntentWrites(h).length, 0);
-    assert.equal(h.lastLog().event, "sensor.suppressed");
-    assert.equal(h.lastLog().level, "debug");
+    assert.equal(h.logs().length, 0, "silent: no log line for a denied event");
+    assert.equal(h.console.length, 0, "silent: no console line either");
     assert.equal(countEvent(h, "sensor.intent"), 0);
   });
 
@@ -106,7 +131,8 @@ describe("EXT-01 policy per event", () => {
     h.click({ target: h.buyButton(), isTrusted: true });
     await flush(h);
     assert.equal(h.messages.length, 1, "unlisted host must not emit");
-    assert.equal(h.lastLog().event, "sensor.suppressed");
+    assert.equal(countEvent(h, "sensor.suppressed"), 0, "retired event: nothing emits it");
+    assert.equal(countEvent(h, "sensor.intent"), 1, "the ring still holds only the first click");
 
     h.setConfig({ saAllowlist: [HOST] });
     h.clock.advance(2000);
@@ -126,7 +152,8 @@ describe("EXT-01 policy per event", () => {
     h.click({ target: h.buyButton(), isTrusted: true });
     await flush(h);
     assert.equal(h.messages.length, 1);
-    assert.equal(h.lastLog().event, "sensor.suppressed");
+    assert.equal(countEvent(h, "sensor.suppressed"), 0, "retired event: nothing emits it");
+    assert.equal(countEvent(h, "sensor.intent"), 1, "the ring still holds only the first click");
   });
 
   test("listed: host removed from the list suppresses the queued load AND later clicks", async () => {
@@ -144,7 +171,7 @@ describe("EXT-01 policy per event", () => {
 
     assert.equal(h.messages.length, 0);
     assert.equal(lastIntentWrites(h).length, 0);
-    assert.equal(countEvent(h, "sensor.suppressed"), 2);
+    assert.equal(h.logs().length, 0, "two denied events, zero log lines");
     assert.equal(countEvent(h, "sensor.intent"), 0);
   });
 
@@ -187,8 +214,8 @@ describe("EXT-01 policy per event", () => {
     h.fireTimers();
     await flush(h);
     assert.equal(h.messages.length, 0);
-    assert.equal(h.lastLog().event, "sensor.suppressed");
-    assert.match(h.lastLog().msg, /^load on amazon\.com/);
+    assert.equal(h.logs().length, 0, "a denied load leaves no log line");
+    assert.ok(!h.consoleText().includes("amazon.com"), "the paused host is not printed either");
   });
 
   test("everywhere: click watcher is attached even when the host is paused at injection", () => {
@@ -231,7 +258,8 @@ describe("EXT-01 policy per event", () => {
     const h = loadContentScript({ hostname: HOST, config: { ...EVERYWHERE, saBlocklist: [HOST] } });
     h.click({ target: h.buyButton(), isTrusted: true });
     await flush(h);
-    assert.equal(h.lastLog().event, "sensor.suppressed");
+    assert.equal(h.messages.length, 0, "denied while paused");
+    assert.equal(h.logs().length, 0, "and silently so");
 
     h.setConfig({ saBlocklist: [] });
     h.clock.advance(100); // inside the cooldown window
@@ -246,7 +274,8 @@ describe("EXT-01 policy per event", () => {
     const logsBefore = h.logs().length;
     const writesBefore = h.writes.length;
 
-    h.failNextGet(new Error("Extension context invalidated."));
+    // Scoped to the policy read: log.js's ring read is a promise-form get too.
+    h.failNextGet(new Error("Extension context invalidated."), "saMode");
     h.click({ target: h.buyButton(), isTrusted: true });
     await flush(h);
 
@@ -273,7 +302,7 @@ describe("EXT-01 policy per event", () => {
   test("the sensor keeps working after a transient storage failure", async () => {
     const h = loadContentScript({ hostname: HOST, config: LISTED });
     await h.tick();
-    h.failNextGet(new Error("Extension context invalidated."));
+    h.failNextGet(new Error("Extension context invalidated."), "saMode");
     h.click({ target: h.buyButton(), isTrusted: true });
     await flush(h);
     assert.equal(h.messages.length, 0);
@@ -291,6 +320,87 @@ describe("EXT-01 policy per event", () => {
     await flush(h);
     assert.equal(unhandled.length, 0);
     assert.equal(lastIntentWrites(h).length, 1, "detection worked even though delivery failed");
+  });
+});
+
+// ---- R-01: a paused site leaves no trace ----------------------------------
+
+describe("R-01 silent suppression", () => {
+  test("paused host leaves no trace anywhere (R-01)", async () => {
+    // everywhere + blocklisted: an unknown domain schedules no load timer, so
+    // the click is the only event.
+    const paused = loadContentScript({
+      hostname: PRIVATE_HOST,
+      config: { ...EVERYWHERE, saBlocklist: [PRIVATE_HOST] },
+    });
+    await paused.tick();
+    assert.equal(paused.timers.length, 0, "no load timer for an unknown domain in everywhere mode");
+    paused.click({ target: paused.buyButton(), isTrusted: true });
+    await flush(paused);
+    assertNoTrace(paused, PRIVATE_HOST);
+
+    // listed + not in the list: the 800 ms load timer IS scheduled and fired,
+    // then a click — both denied, both silent.
+    const unlisted = loadContentScript({
+      hostname: PRIVATE_HOST,
+      config: { ...LISTED, saAllowlist: ["other.test"] },
+    });
+    await unlisted.tick();
+    assert.equal(unlisted.timers.length, 1, "listed mode schedules the load timer");
+    unlisted.fireTimers();
+    await flush(unlisted);
+    unlisted.clock.advance(2000); // judged by policy, not by the cooldown
+    unlisted.click({ target: unlisted.buyButton(), isTrusted: true });
+    await flush(unlisted);
+    assertNoTrace(unlisted, PRIVATE_HOST);
+    assert.equal(countEvent(unlisted, "sensor.suppressed"), 0, "retired event never appears");
+  });
+
+  test("paused host never reaches the bridge end to end (R-01)", async () => {
+    const c = loadContentScript({
+      hostname: PRIVATE_HOST,
+      config: { ...EVERYWHERE, saBlocklist: [PRIVATE_HOST] },
+    });
+    await c.tick();
+    c.click({ target: c.buyButton(), isTrusted: true });
+    await flush(c);
+    assert.equal(c.messages.length, 0);
+
+    // Pipe whatever the sensor emitted (nothing) into a paired service worker.
+    const b = loadBackground({ config: { ...LISTED, saBridgeToken: TOKEN } });
+    for (const m of c.messages) b.message(m);
+    await flush(b, 3);
+    assert.equal(b.fetches.length, 0, "nothing to forward, nothing fetched");
+    assert.equal(b.logs().length, 0);
+    assert.ok(!JSON.stringify(b.fetches).includes(PRIVATE_HOST));
+    assert.ok(!b.consoleText().includes(PRIVATE_HOST));
+  });
+});
+
+// ---- R-02c: boot containment -----------------------------------------------
+
+describe("R-02c void main().catch", () => {
+  test("boot read failure is contained (R-02c)", async () => {
+    const h = loadContentScript({
+      hostname: HOST,
+      config: LISTED,
+      failFirstGet: { err: new Error("Extension context invalidated."), key: "saMode" },
+    });
+    await flush(h);
+
+    assert.equal(unhandled.length, 0, "main() rejection is swallowed by the entry point");
+    assert.equal((h.listeners.click || []).length, 1, "click watcher attached before the failing await");
+    assert.equal(h.timers.length, 0, "no load timer — the boot read never resolved");
+    assert.equal(h.logs().length, 0, "containment does not log");
+    assert.equal(h.console.length, 0, "containment does not print");
+    assert.equal(h.writes.length, 0);
+
+    // The click path re-reads policy itself, so the sensor still works.
+    h.setConfig(LISTED);
+    h.click({ target: h.buyButton(), isTrusted: true });
+    await flush(h);
+    assert.equal(h.messages.length, 1, "a later trusted click on a watched host emits");
+    assert.equal(h.messages[0].trigger, "click");
   });
 });
 

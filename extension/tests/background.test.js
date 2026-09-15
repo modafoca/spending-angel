@@ -7,6 +7,11 @@
 // NATIVE-01: forward() authenticates to the bridge with the pairing token
 //            (Authorization: Bearer <token>); with no/malformed token it does
 //            not fetch, leaves no timer behind, and marks the popup unpaired.
+// S-03:      the wire body is rebuilt from the five named keys — anything else
+//            riding on the runtime message never reaches the bridge.
+// R-02b:     a failing token read is contained inside forward() (no log, no
+//            write, no fetch, no timer) and the onMessage listener contains a
+//            forward() that still rejects; neither ever leaks a rejection.
 //
 // The real background.js is evaluated in a vm context by tests/harness.js.
 // The abort timer is Node's real setTimeout there, so every test that reaches
@@ -123,8 +128,9 @@ describe("EXT-03 serialized syncContentScripts", () => {
     assert.equal(h.logs().find((l) => l.event === "sites.register_failed").msg, "boom");
     assert.equal(h.active, null);
 
-    // 2. storage.get throws → escapes reconcile, caught by the tail.
-    h.failNextGet(new Error("storage gone"));
+    // 2. storage.get throws → escapes reconcile, caught by the tail. Scoped to
+    //    the DEFAULTS read (saMode) so a pending ring read can't consume it.
+    h.failNextGet(new Error("storage gone"), "saMode");
     await h.ctx.syncContentScripts(); // must resolve, never reject
     await h.tick();
     const failed = h.logs().find((l) => l.event === "sites.sync_failed");
@@ -232,8 +238,8 @@ describe("EXT-03 serialized syncContentScripts", () => {
 
   test("onInstalled seeds the recommended list once, then syncs", async () => {
     const h = loadBackground({ config: {} });
-    await h.listeners.onInstalled[0]();
-    await h.tick();
+    h.listeners.onInstalled[0]();
+    await flush(h, 6);
 
     assert.equal(h.store.saInitialized, true);
     assert.equal(h.store.saMode, "listed");
@@ -244,10 +250,29 @@ describe("EXT-03 serialized syncContentScripts", () => {
 
     // Second install event (e.g. update) must not re-seed over user edits.
     h.setConfig({ saAllowlist: ["only.mine.test"] });
-    await h.listeners.onInstalled[0]();
-    await h.tick();
+    h.listeners.onInstalled[0]();
+    await flush(h, 6);
     assert.deepEqual(Array.from(h.store.saAllowlist), ["only.mine.test"]);
     assert.equal(h.logEvents().filter((e) => e === "sites.seeded").length, 1);
+  });
+
+  test("onInstalled is contained when storage rejects at install time (R2-03)", async () => {
+    const h = loadBackground({ config: {} });
+    h.failNextGet(new Error("storage gone"), "saInitialized"); // seedIfNeeded's read
+    const before = unhandled.length;
+    h.listeners.onInstalled[0]();
+    await flush(h, 6);
+    assert.equal(unhandled.length, before, "no unhandled rejection escaped the listener");
+    assert.equal(h.writes.length, 0, "nothing seeded");
+    assert.equal(h.registrations.length, 0, "sync never ran after a failed seed");
+    assert.equal(h.logs().length, 0, "a dead storage takes no log line");
+    assert.equal(h.console.length, 0, "and nothing is printed either");
+
+    // The next install event (storage back) seeds and syncs normally.
+    h.listeners.onInstalled[0]();
+    await flush(h, 6);
+    assert.equal(h.store.saInitialized, true);
+    assert.ok(h.active, "sync ran after the recovered seed");
   });
 });
 
@@ -297,6 +322,8 @@ describe("NATIVE-01 forward() pairing token", () => {
     assert.equal(init.headers["Content-Type"], "application/json");
     assert.deepEqual(Object.keys(init.headers).sort(), ["Authorization", "Content-Type"]);
     assert.deepEqual(JSON.parse(init.body), msg);
+    // S-03: the body is the five-key wire object, in the app's validate() order.
+    assert.deepEqual(Object.keys(JSON.parse(init.body)), ["id", "type", "trigger", "hostname", "ts"]);
     assert.ok(init.signal, "abort signal attached");
 
     assert.deepEqual(h.bridgeWrites().at(-1), { bridgeOk: true, bridgeAt: h.clock.now, bridgeWhy: null });
@@ -461,14 +488,100 @@ describe("NATIVE-01 forward() pairing token", () => {
 
   test("a storage failure while reading the token fetches nothing and arms no timer", async () => {
     // The token read is the first statement of forward(): if it fails, nothing
-    // downstream (fetch, AbortController, 4 s timer) may have been created.
+    // downstream (fetch, AbortController, 4 s timer) may have been created —
+    // and nothing may be logged or written either, since that would recurse
+    // into the same dead storage (R-02b). Driven through the REAL listener; no
+    // test-side .catch masks a production promise.
     const h = loadBackground({ config: { ...LISTED, saBridgeToken: TOKEN } });
-    h.failNextGet(new Error("storage gone"));
-    await h.ctx.forward(intent()).catch(() => {});
+    h.failNextGet(new Error("storage gone"), "saBridgeToken");
+    h.message(intent());
     await flush(h);
+
+    assert.equal(unhandled.length, 0, "no unhandled rejection from the listener path");
+    assert.equal(h.fetches.length, 0);
+    assert.equal(h.timers.length, 0, "no abort timer may be created");
+    assert.equal(h.writes.length, 0, "containment sets nothing");
+    assert.equal(h.bridgeWrites().length, 0);
+    assert.equal(h.logs().length, 0, "containment logs nothing");
+    assert.equal(h.console.length, 0, "containment prints nothing");
+
+    // Called directly, forward() RESOLVES on the same failure — no .catch here,
+    // by contract (design-spec-r2 edge case 21).
+    h.failNextGet(new Error("storage gone"), "saBridgeToken");
+    const result = await h.ctx.forward(intent());
+    assert.equal(result, undefined);
+    assert.equal(unhandled.length, 0);
     assert.equal(h.fetches.length, 0);
     assert.equal(h.timers.length, 0);
-    assert.equal(h.bridgeWrites().length, 0);
+    assert.equal(h.writes.length, 0);
+    assert.equal(h.logs().length, 0);
+
+    // Storage back: the next intent goes through normally.
+    h.message(intent({ id: "after" }));
+    await flush(h);
+    assert.equal(h.fetches.length, 1, "recovered once storage answers again");
+  });
+
+  test("onMessage listener contains a forward() that rejects (R-02b)", async () => {
+    // Proves the LISTENER's .catch, not forward()'s own try/catch: forward is
+    // a function declaration on the vm global, so the listener resolves it by
+    // name at call time and this stand-in rejects unconditionally. Dropping
+    // `.catch(() => {})` from the listener turns this red.
+    const h = loadBackground({ config: { ...LISTED, saBridgeToken: TOKEN } });
+    h.ctx.forward = async () => { throw new Error("boom"); };
+    h.listeners.onMessage[0](intent(), { id: "sender" }, () => {});
+    await flush(h);
+    assert.equal(unhandled.length, 0, "the listener must contain a rejecting forward()");
+    assert.equal(h.fetches.length, 0);
+    assert.equal(h.writes.length, 0);
+  });
+});
+
+// ---- S-03: five-key wire object --------------------------------------------
+
+describe("S-03 wire allowlist", () => {
+  test("extra keys on the message never reach the wire (S-03)", async () => {
+    const h = loadBackground({ config: { ...LISTED, saBridgeToken: TOKEN } });
+    const msg = intent();
+    h.message({ ...msg, extraPrivateField: "synthetic-only", nested: { a: 1 }, hostname2: "leak.test" });
+    await flush(h);
+
+    assert.equal(h.fetches.length, 1);
+    const body = JSON.parse(h.fetches[0].init.body);
+    assert.deepEqual(Object.keys(body).sort(), ["hostname", "id", "trigger", "ts", "type"]);
+    assert.deepEqual(body, msg, "the five values are the message's own");
+    assert.equal("extraPrivateField" in body, false);
+    assert.equal("nested" in body, false);
+    assert.ok(!h.fetches[0].init.body.includes("synthetic-only"));
+    assert.ok(!h.fetches[0].init.body.includes("leak.test"));
+
+    // Logging still uses the message's id / hostname (same values).
+    const log = h.logs().find((l) => l.event === "bridge.forwarded");
+    assert.ok(log);
+    assert.equal(log.intent_id, msg.id);
+    assert.equal(log.msg, HOST);
+  });
+
+  test("a message missing id sends four keys, never five with undefined", async () => {
+    const h = loadBackground({ config: { ...LISTED, saBridgeToken: TOKEN } });
+    h.message(intent({ id: undefined }));
+    await flush(h);
+
+    assert.equal(h.fetches.length, 1, "the fetch still happens — the app's validate() tolerates a nil id");
+    const raw = h.fetches[0].init.body;
+    const body = JSON.parse(raw);
+    assert.equal("id" in body, false, "JSON.stringify drops the undefined key");
+    assert.deepEqual(Object.keys(body), ["type", "trigger", "hostname", "ts"]);
+    assert.ok(!raw.includes("undefined"));
+  });
+
+  test("the wire body carries exactly the five values, in validate() order", async () => {
+    const h = loadBackground({ config: { ...LISTED, saBridgeToken: TOKEN } });
+    // Keys deliberately shuffled on the message: the wire order is the worker's.
+    h.message({ ts: 5, hostname: HOST, trigger: "load", id: "abc", type: "checkout_intent" });
+    await flush(h);
+    assert.equal(h.fetches[0].init.body,
+      JSON.stringify({ id: "abc", type: "checkout_intent", trigger: "load", hostname: HOST, ts: 5 }));
   });
 });
 
