@@ -1,91 +1,128 @@
 # Spending Angel
 
-A tiny Chrome extension that's the angel on your shoulder when you're about to spend.
+The angel on your shoulder when you're about to spend.
 
-You tell it once what you're saving for. Then, when you wander onto a shopping site or click "Buy now," it slides in from the corner with a cartoon angel and a sound, and reminds you: *"Hey. Stop. You're saving for Tokyo trip."*
+You tell it once what you're saving for. Then, when you're about to check out on a shopping site, a character takes over your screen, says its line out loud, and reminds you: *"Hey. Stop. You're saving for Tokyo trip."*
 
 That's it. No tracking, no math, no dashboards. The joke does the work.
 
-## What it does
+## How it's built (v0.5)
 
-- Asks once: **what are you saving for?** (free text — "Tokyo trip", "rent", "new camera")
-- When you visit one of ~50 known shopping sites, OR click an "Add to Cart" / "Buy now" / "Checkout" button anywhere, an angel slides in from the corner with your goal text and plays a sound.
-- Click the toolbar icon to edit the goal, change the sound, mute a site, or send the angel to bed (`Angel is sleeping 😴`).
-- If you leave the goal blank, it falls back to the generic *"Hey. Stop. Don't do that."*
+Two halves, one job each:
 
-Bilingual on launch — the click detector matches English and Spanish buy-button text (`add to cart`, `comprar`, `finalizar compra`, etc.).
+- **`mac-app/` — the brain and the performer.** A macOS menu-bar app (Swift Package, no Dock icon). It owns the goal, the cast, on/off and snooze, the monthly stat, and every pixel of the catch: a full-screen overlay with the character's animation, a speech bubble, and a voice line at full volume. Details in [`mac-app/README.md`](mac-app/README.md).
+- **`extension/` — the Sensor.** A Chrome extension (MV3) that *only detects*. On the sites you choose it watches for a checkout page load or a real click on a buy button, and POSTs a tiny intent to the app over `http://127.0.0.1:17865`. It renders nothing and plays nothing.
+
+The two are paired with a token the app generates and shows you; the Sensor cannot talk to the app until you paste it in. Nothing leaves your Mac.
 
 ## Install (dev mode)
 
-1. Clone this repo.
-2. Open `chrome://extensions`.
-3. Toggle **Developer mode** on (top-right).
-4. Click **Load unpacked** → pick this folder.
-5. The extension installs and immediately opens onboarding. Set your goal, you're done.
+1. **Run the app.**
+   ```bash
+   swift run --package-path mac-app
+   ```
+   or open `mac-app/Package.swift` in Xcode, pick the `SpendingAngel` scheme, Run. A `$`-halo icon appears in the menu bar.
+2. **Load the Sensor.** Open `chrome://extensions`, toggle **Developer mode** on, click **Load unpacked** and pick the **`extension/` folder** (not the repo root — that's where `manifest.json` lives).
+3. **Pair them.** Click the menu-bar icon → under **PAIR SENSOR** hit **COPY**. In Chrome, open the extension's **Options → Pair with the app**, paste the token, **Save**. The options page should now read "Paired — token ends in …XXXX".
+4. **Verify.** Click the toolbar icon → **Simulate intent**. "App connection" should flip to **Connected ✓** and the character should appear on screen.
 
-> **Heads up — the bundled sounds are silent.** This repo ships with 0.5s silent `.mp3` placeholders so the extension loads without 404s. Drop real audio at `sounds/stop.mp3`, `sounds/bonk.mp3`, `sounds/mom-sigh.mp3`, `sounds/wah-wah.mp3` to hear anything. See `sounds/README.md`.
+> **Pulling this change onto an existing install?** Reload the extension on `chrome://extensions` and pair once — older builds had no token, and the app now answers `401` without one.
 
-> **Heads up — no toolbar icon yet.** Chrome shows the default puzzle-piece in v0.1. To swap in real ones, see `icons/README.md`.
+## Using it
 
-## Adding your own sounds
+- **Goal** — type it in the dropdown under SAVING FOR. Leave it blank and the character falls back to its generic line.
+- **Guardian** — pick one of the cast (The Angel, Dominican Papi, The Wizard, Asian Mom), or flip **SHAKE IT UP** to get a random one per catch.
+- **Sites** — the toolbar popup handles the page you're on ("Watch this site" / "Stop watching", or "Pause on this site" in everywhere mode). **Manage all sites →** opens the options page with the full list.
+- **Off / snooze** — the big button in the dropdown is the master switch; **SNOOZE 1 HR** below it is a nap. Real intents respect both; the tiny **▶ test** link fires a catch regardless so you can hear a character.
 
-1. Drop `sounds/your-sound.mp3` into the folder.
-2. Add `<option value="your-sound.mp3">Your Label</option>` to the `<select id="sound">` in `popup.html`.
-3. Reload the extension on `chrome://extensions`.
+## How a catch works
 
-Sound names in the dropdown should be playful, not technical — "The Classic", "Cartoon Bonk", "Disappointed Sigh", "Sad Trombone".
+1. The content script decides there's checkout intent (see below) and sends `{id, type, trigger, hostname, ts}` to the service worker. That is the whole payload — no URL, no page contents, no cart.
+2. The service worker POSTs it to the app with `Authorization: Bearer <token>`. No token saved yet → it doesn't fetch at all and the popup shows "Not paired ✕".
+3. The app checks the token, validates the intent, and throttles to one accepted intent per 8 s. If the app is on duty and no catch is already on screen, the overlay comes up: character animates in, the voice line plays, the first ~0.5 s of clicks are swallowed, then the overlay becomes click-through and fades after the line ends. A catch that arrives while one is playing is skipped and not counted.
+4. The dropdown's stat ("I've stopped you 3 times. You're welcome.") counts only catches that were actually performed this calendar month.
 
-## Adding your own shopping domains
-
-Edit `domains.js` — append a string to the `SPENDING_ANGEL_DOMAINS` array. Use the bare hostname (`amazon.com`, not `https://www.amazon.com/`). Wildcards: prefix with `*.` (e.g. `*.myshopify.com` catches every Shopify-hosted store).
+Bilingual on launch — the click detector matches English and Spanish buy-button text (`add to cart`, `comprar`, `finalizar compra`, etc.).
 
 ## How it decides to trigger
 
+Two modes, set in the options page:
+
+- **Only the sites I list** (default, recommended). The content script is injected only on your list; nothing runs anywhere else. First run seeds the list with ~50 known shopping domains from `domains.js`.
+- **Every site.** Watches everywhere except the sites you pause. Chrome asks for the `*://*/*` permission when you pick this.
+
 Two paths, both in `content.js`:
 
-- **Domain match on page load.** The hostname is checked against `domains.js` (suffix match, `www.` stripped).
-- **Buy-button click.** A single delegated `click` listener on `document` looks at the target's text — `add to cart`, `buy now`, `checkout`, `place order`, plus the Spanish equivalents — and triggers regardless of domain.
+- **Page load.** 800 ms after load, on a listed site (or, in everywhere mode, a host matching `domains.js` — suffix match, `www.` stripped).
+- **Buy-button click.** A delegated capture-phase `click` listener looks at the clicked element's text — `add to cart`, `buy now`, `checkout`, `place order`, plus the Spanish equivalents. **Real user clicks only** — a click the page dispatches itself (`isTrusted === false`) is ignored.
 
-You can switch between page-load only / button-click only / both in the popup. There's a 1.5-second cooldown so the sound doesn't stack on rapid clicks.
-
-## File map
-
-```
-spending-angel/
-├── manifest.json     MV3 config
-├── background.js     service worker — sets defaults, opens onboarding
-├── content.js        injected into every page; runs the show
-├── overlay.css       angel sticker styles
-├── popup.html / .css / .js   toolbar UI
-├── onboarding.html   first-install flow
-├── domains.js        list of e-commerce hostnames
-├── sounds/           drop your .mp3 files here
-└── icons/            drop your .pngs here (see folder README)
-```
+Either way there's a 1.5-second cooldown, and the site policy is re-read from storage on every event, so pausing a site in the popup takes effect in the tabs that are already open — no reload needed.
 
 ## Storage schema
 
 Lives in `chrome.storage.local`:
 
-```json
-{
-  "enabled": true,
-  "goal": "Tokyo trip",
-  "selectedSound": "stop.mp3",
-  "volume": 0.7,
-  "triggerMode": "both",
-  "mutedDomains": [],
-  "onboarded": true
-}
+| Key | What |
+| --- | --- |
+| `saMode` | `"listed"` or `"everywhere"` |
+| `saAllowlist` | sites watched in listed mode (seeded from `domains.js`) |
+| `saBlocklist` | sites paused in everywhere mode |
+| `saInitialized` | first-run seed done |
+| `saLogs` | ring buffer of the last 50 structured log entries (popup → Recent events) |
+| `lastIntent` | the last intent the sensor emitted |
+| `bridgeOk` / `bridgeAt` / `bridgeWhy` | last app contact: ok?, when, and why not (`unpaired`, `unauthorized`, `unreachable`) |
+| `saBridgeToken` | the pairing token — 64 hex chars |
+
+The token is the only secret in the system, and it never leaves the machine: the service worker sends it to `127.0.0.1` and nowhere else, and the app never logs it.
+
+## Security note
+
+The bridge listens on loopback only. Every request needs the bearer token (constant-time compare); a wrong or missing one gets `401`, and nothing from the body is decoded or logged. There are no CORS headers, so a web page cannot read a response even if it manages to reach the port. Headers, body and intent `id` are capped (8 KB / 1 MB / 128 bytes) and logged fields are truncated. If you suspect the token leaked, regenerate it from the PAIR SENSOR row in the dropdown and paste the new one into Options; the old one stops working immediately.
+
+## File map
+
+```
+spending-angel/
+├── extension/                 the Sensor (load this folder unpacked)
+│   ├── manifest.json          MV3 config, v0.5
+│   ├── background.js          service worker — per-site injection, forwards intents to the app
+│   ├── content.js             runs on watched sites; emits checkout intents
+│   ├── detect.js              buy-button text matching (EN/ES), visibility
+│   ├── sites.js               site-list / mode / token helpers (pure)
+│   ├── domains.js             the seed list of shopping hostnames
+│   ├── log.js                 structured logging into saLogs
+│   ├── popup.html / .css / .js     toolbar popup (this site, last intent, app connection)
+│   ├── options.html / .css / .js   pairing + site lists
+│   ├── pixel.css / fonts/ / icons/ pixel-game theme, Silkscreen font, $-halo icons
+│   └── tests/                 node --test extension/tests/*.test.js
+├── mac-app/                   the menu-bar app (Swift Package) — see mac-app/README.md
+├── .github/workflows/ci.yml   Swift build+test on macOS, extension tests on Linux
+└── sounds/                    legacy assets from the v0.1 extension; not used by the sensor
 ```
 
-The popup writes here. The content script reads on load and listens for `chrome.storage.onChanged`, so edits in the popup take effect on every open tab without a reload.
+## Tests
 
-## What's intentionally not in v0.1
+```bash
+# extension (Node 20+)
+node --test extension/tests/*.test.js
+
+# app (needs full Xcode — Command Line Tools alone lack the Testing module)
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --package-path mac-app
+```
+
+## Adding your own shopping domains
+
+Two ways. For yourself: options page → **Your sites** → add a host. For the seed everyone gets on first run: edit `extension/domains.js` — append a string to the `SPENDING_ANGEL_DOMAINS` array. Use the bare hostname (`amazon.com`, not `https://www.amazon.com/`). Wildcards: prefix with `*.` (e.g. `*.myshopify.com` catches every Shopify-hosted store).
+
+## Historical notes (v0.1)
+
+The first cut was a single Chrome extension that did everything itself: a DOM overlay (`overlay.css`) with a cartoon angel sliding in from the corner, an `.mp3` picked from a sound dropdown in the popup, an `onboarding.html` first-run flow, and `mutedDomains` / `triggerMode` / `selectedSound` keys in storage. All of that moved into the macOS app so the character could take the whole screen and talk. The `sounds/` folder (`stop.mp3`, `bonk.mp3`, `mom-sigh.mp3`, `wah-wah.mp3`) is left over from that era; the app's voice lines live in `mac-app/Sources/SpendingAngel/Resources/voice/`.
+
+## What's intentionally not here
 
 - Spend tracking, target amounts, currencies — none of it. The financial logic is deliberately dumb so the comedy can carry the weight.
-- Multiple goals, custom sound upload, Firefox port.
-- Chrome Web Store submission. Personal install for now.
+- Multiple goals, custom voice upload, Firefox port.
+- Chrome Web Store submission and a signed, notarized `.app`. Personal install for now.
 
 ## License
 

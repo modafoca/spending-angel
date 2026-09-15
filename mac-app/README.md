@@ -1,89 +1,173 @@
-# Spending Angel — macOS app (M-02)
+# Spending Angel — macOS app
 
-The performer. A menu-bar app whose one job right now is to prove the **magic
-moment**: fire a full-screen "catch" where the Angel ambushes you with a voice
-line. No browser, no bridge yet — triggered from a menu item.
+The brain and the performer. A menu-bar app that owns the goal, the cast, on/off,
+snooze and the monthly stat, and fires the **catch**: a full-screen overlay where a
+character ambushes you with a voice line. Real catches arrive from the Chrome
+Sensor (`../extension/`) over a paired localhost bridge; a **▶ test** link in the
+dropdown fires one by hand.
 
 ## Run it
 
 **Terminal:**
 ```bash
-cd mac-app
-swift run
+swift run --package-path mac-app
 ```
 **Or Xcode:** open `mac-app/Package.swift`, pick the `SpendingAngel` scheme, Run.
 
-A ✦ icon appears in the menu bar (no Dock icon). Click it →
-**"▶︎ Test the catch (Angel)"**. The Angel slides in full-screen, says its line
-at full volume, and fades after ~4s. **"Quit Spending Angel"** (⌘Q) exits.
+A `$`-halo icon appears in the menu bar (no Dock icon). Click it for the dropdown.
+Only one copy runs at a time: the bridge port doubles as a single-instance lock, so
+a second launch logs `app.duplicate_instance` and quits itself.
 
-## What it does (the catch sequence)
+## The dropdown
+
+Top to bottom (pixel-game theme — `Theme`, `.pixel()` font, `PixelFrame` corners):
+
+- **SAVING FOR** — the goal, free text. Blank falls back to the generic line.
+- **PICK YOUR GUARDIAN** — The Angel, Dominican Papi, The Wizard, Asian Mom (four "?" slots are reserved for future cast).
+- **SHAKE IT UP** — random character per catch, no immediate repeats.
+- **Stat box** — the character's brag over this calendar month's catch count ("I've stopped you 3 times. You're welcome.") plus a days-clean streak. Derived from the month containing *now*, so the count reads 0 on the 1st even before the first catch.
+- **PAIR SENSOR** — the pairing token with a **COPY** button. Paste it into the extension's Options → Pair with the app. Regenerating (same row) mints a new one and invalidates the old pairing until you paste again.
+- **SPENDING ANGEL IS ON / OFF** — master switch. **SNOOZE 1 HR / WAKE UP** — a nap. Real intents respect both.
+- **▶ test** / **quit** — the test fires a catch regardless of on-duty state (and counts toward the stat if it actually plays).
+
+## The bridge
+
+`BridgeServer.swift` listens on `http://127.0.0.1:17865` (loopback only).
 
 ```
-t+0.0  overlay appears; Angel animates in; clicks are intercepted
-t+0.1  a random Angel catch-line plays at full volume
-t+0.5  intercept releases → overlay becomes click-through
-t+4.0  auto-dismiss with an exit animation
+POST /intent HTTP/1.1
+Authorization: Bearer <64-hex token>
+Content-Type: application/json
+
+{"id":"<uuid>","type":"checkout_intent","trigger":"click"|"load"|"simulated","hostname":"amazon.com","ts":1700000000000}
 ```
 
-The 0.5s intercept is the **"get through me first"** gag — during it, a click
-anywhere is swallowed (the page underneath doesn't get it). After it, the overlay
-is click-through, so you proceed with your purchase; it fades on its own at 4s.
+Responses have an empty body, `Connection: close`, and no CORS headers (the Sensor's
+service worker has `host_permissions` for `127.0.0.1`, so it needs none; a web page
+therefore can't read anything back).
 
-> **Dismiss-interaction note:** because the overlay goes click-through after the
-> gag, there's no "click the angel to close" yet — it's the 0.5s-swallow →
-> click-through → 4s-fade model, which is the real product behavior. If you want
-> a manual dismiss (e.g. Esc, or click-the-character), flag it after you've felt
-> it in use and we'll add it.
+| Status | When |
+| --- | --- |
+| `200` | accepted — the intent is handed to the app |
+| `204` | `OPTIONS` (any path) — answered so a stray preflight doesn't hang; no auth |
+| `400` | bad `Content-Length`, body isn't an intent, or it fails validation |
+| `401` | missing or wrong bearer token (`WWW-Authenticate: Bearer realm="spending-angel"`); body never decoded or logged |
+| `404` | path isn't exactly `/intent` |
+| `405` | method isn't `POST` |
+| `413` | `Content-Length` over 1 MB |
+| `429` | fewer than 8 s since the last *accepted* intent |
+| `431` | request headers over 8 KB |
 
-## Drop your real voice in
+Caps: headers 8 192 bytes, body 1 000 000 bytes, `id` 128 bytes, `hostname` 1–253 bytes
+(UTF-8), 10 s per connection. Logged request fields are clipped to 256 bytes.
 
-Placeholder audio lives at:
+**Pairing.** On first launch `Store` generates a token (32 random bytes → 64 lowercase
+hex chars), keeps it in `UserDefaults` (`bridgeToken`), and shows it under PAIR SENSOR.
+The server reads it per request and compares in constant time, so regenerating takes
+effect immediately, no restart. The token is never written to the logs (at most its
+last 4 characters, as `token_tail`).
+
+## The catch sequence
+
 ```
-mac-app/Sources/SpendingAngel/Resources/voice/angel/catch-1.mp3
+t+0.0    overlay panel appears above everything (any Space, fullscreen apps too);
+         character animates in; clicks are intercepted; the voice line starts
+t+0.5    intercept releases → overlay becomes click-through
+t+hold   exit animation (0.4 s), panel closes
 ```
-…and is just a copy of the old extension `stop.mp3` so the app makes *a* sound.
 
-When your ElevenLabs recordings are ready, drop them in as:
+`hold = max(4 s, clip length + 0.6 s)`. Clips run up to ~12 s, so a catch can be on
+screen well past the bridge's 8 s throttle. The overlay is the single admission point:
+if a catch is already playing, the next one is dropped and logged as
+`catch.skipped_busy` — it is **not** counted in the stat. Only an admitted catch
+records and logs `catch.performed`. The bridge path additionally checks on-duty first
+(`catch.skipped_off_duty`); the manual test doesn't.
+
+The 0.5 s intercept is the **"get through me first"** gag — during it, a click anywhere
+is swallowed. After it you can proceed with your purchase; the character fades on its own.
+
+## Voice lines
+
+Per character under `Sources/SpendingAngel/Resources/voice/<character>/`
+(`angel`, `papi`, `wizard`, `mom`): a few `*.mp3` clips plus a `captions.json` so the
+speech bubble types the exact line being spoken. The player picks one at random.
+Without a caption the bubble falls back to "You're saving for <goal>."
+
+## Logs
+
+One JSON line per event in `~/Library/Logs/SpendingAngel/spending-angel-YYYY-MM-DD.jsonl`
+(14-day retention), mirrored to os.log under subsystem `net.modafoca.spendingangel`
+so Console.app / `log stream` see it live. Nothing leaves the machine.
+
+Events worth grepping for: `bridge.listening`, `bridge.unauthorized`,
+`bridge.intent_received`, `bridge.intent_throttled`, `catch.performed`,
+`catch.skipped_busy`, `catch.skipped_off_duty`, `store.token_generated`,
+`store.token_regenerated`, `pair.token_copied`. `intent_id` traces one catch from the
+extension to the overlay.
+
+## Tests
+
+Swift Testing, in `Tests/SpendingAngelTests/`:
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --package-path mac-app
 ```
-Resources/voice/angel/catch-1.mp3
-Resources/voice/angel/catch-2.mp3
-Resources/voice/angel/catch-3.mp3
+
+Full Xcode is required — the Command Line Tools alone don't ship the `Testing`
+module. `swift build --package-path mac-app` works with either.
+
+Poking the bridge by hand:
+
+```bash
+TOKEN=<paste from PAIR SENSOR>
+curl -i -X POST http://127.0.0.1:17865/intent \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"type":"checkout_intent","trigger":"simulated","hostname":"example.com","ts":0}'
+# expect 200; drop the Authorization header and expect 401
 ```
-The player picks one at random. (Other characters get `voice/papi/`, `voice/wizard/`,
-`voice/mom/` folders when we wire the full cast in M-06.)
-
-## Verify (M-02 success criteria)
-
-- [ ] ✦ icon in menu bar, no Dock icon
-- [ ] Menu has "▶︎ Test the catch (Angel)" + "Quit"
-- [ ] Triggering it: Angel animates in, "saving for Tokyo" bubble shows, a line plays at full volume
-- [ ] During the first ~0.5s a click is swallowed; after, clicks pass through to whatever's underneath
-- [ ] Auto-dismisses after ~4s with an exit animation
-- [ ] Renders above a **fullscreen** Chrome/Safari window and on any Space
-- [ ] No Accessibility or Input-Monitoring permission prompt
 
 ## Notes / deliberate choices
 
 - **Swift Package, not `.xcodeproj`** — reliable to build from terminal and in
   Xcode, and verifiable in CI. Wrapping into a signed, notarized `.app` bundle is
-  **M-FINAL** (needs the $99/yr Apple Developer account; not required to run locally).
-- **Menu trigger, not a global hotkey** — a global hotkey needs Input-Monitoring
-  permission; we avoid invasive permissions on purpose.
-- **`😇` placeholder art** — real Figma cast art lands in **M-06**. The emoji is an
-  obvious stand-in so it can't ship by accident.
+  still to come (needs the Apple Developer account; not required to run locally).
+- **Loopback + bearer token, not Native Messaging** — keeps the extension a plain
+  MV3 package with no host manifest to install. The token is the only secret.
+- **Menu-bar trigger, not a global hotkey** — a global hotkey needs Input-Monitoring
+  permission; we avoid invasive permissions on purpose. No Accessibility prompt either.
 - **`NSApp.setActivationPolicy(.accessory)`** is the SPM stand-in for `LSUIElement`.
+- **`UserDefaults`, not Keychain** for the token — it only ever grants "make my own
+  character yell at me" on this machine.
 
 ## File map
 
 ```
 mac-app/
 ├── Package.swift
-└── Sources/SpendingAngel/
-    ├── SpendingAngelApp.swift     @main · MenuBarExtra + the menu
-    ├── AppDelegate.swift          accessory activation policy; owns the overlay
-    ├── OverlayController.swift    the NSPanel + the catch-sequence timing
-    ├── CatchView.swift            the SwiftUI performance (Angel + bubble + animation)
-    ├── AudioPlayer.swift          full-volume catch-line playback
-    └── Resources/voice/angel/catch-1.mp3   (placeholder)
+├── Sources/SpendingAngel/
+│   ├── SpendingAngelApp.swift     @main · MenuBarExtra + the manual test
+│   ├── AppDelegate.swift          accessory policy; owns the overlay; starts the bridge
+│   ├── BridgeServer.swift         127.0.0.1:17865 · auth, framing, validation, throttle
+│   ├── CatchRunner.swift          admit → record → log; shared by bridge + test
+│   ├── OverlayController.swift    the NSPanel + catch-sequence timing
+│   ├── CatchView.swift            the SwiftUI performance (character + bubble + animation)
+│   ├── DropdownView.swift         the menu-bar "brain" (goal, cast, stat, PAIR SENSOR, controls)
+│   ├── Store.swift                persisted state: goal, cast, on/off, snooze, stat, token
+│   ├── Characters.swift           the cast: names, brags, streak lines
+│   ├── AudioPlayer.swift          full-volume clip playback + captions
+│   ├── Log.swift                  JSONL + os.log, field clipping
+│   ├── Theme.swift / PixelFrame.swift / PixelToggleStyle.swift / Fonts.swift   pixel UI kit
+│   ├── AppIcons.swift / CastAssets.swift / FrameAnimationView.swift / SpeechBubble.swift
+│   └── Resources/
+│       ├── voice/<character>/     *.mp3 + captions.json
+│       ├── cast/<character>_sequence/   frame art + portraits
+│       ├── icon/ · fonts/ · ui/   $-halo mark, Silkscreen, speech bubble
+└── Tests/SpendingAngelTests/      Swift Testing suites (bridge parsing/auth, store dates, catch runner)
 ```
+
+## Historical notes
+
+The first milestone (M-02) was menu-item-only — "no browser, no bridge yet" — with a
+`😇` emoji stand-in and a single placeholder clip copied from the old extension. The
+bridge landed in M-05, the real cast art and voices in M-06, and the pairing token in
+the September 2026 audit fixes.
