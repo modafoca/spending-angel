@@ -13,17 +13,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
 
         // The bridge: real checkout intents from the browser sensor land here.
+        // Only requests carrying the pairing token get this far (the token is
+        // read per request, so "regenerate" in the dropdown needs no restart).
         // Real intents respect on/off + snooze (unlike the manual Test button).
-        let server = BridgeServer { [weak self] intent in
+        // CatchRunner asks the overlay first and counts/logs only if admitted;
+        // it also owns the off-duty line so every logged hostname is clipped.
+        let server = BridgeServer(expectedToken: { Store.shared.bridgeToken }) { [weak self] intent in
             guard Store.shared.onDuty else {
-                Log.info("catch.skipped_off_duty", intent.hostname, ["intent_id": intent.id ?? ""])
+                CatchRunner.skipOffDuty(hostname: intent.hostname, intentID: intent.id)
                 return
             }
             let character = Store.shared.nextCatchCharacter()   // honors Shake It Up
-            Store.shared.recordCatch()
-            Log.info("catch.performed", intent.hostname,
-                     ["intent_id": intent.id ?? "", "character": character.rawValue, "source": "bridge"])
-            self?.overlay.performCatch(goal: Store.shared.goal, character: character)
+            CatchRunner.run(goal: Store.shared.goal, character: character,
+                            source: "bridge", hostname: intent.hostname, intentID: intent.id,
+                            perform: { g, c in self?.overlay.performCatch(goal: g, character: c) ?? false },
+                            record: Store.shared.recordCatch)
         }
         // Single-instance guard: if the port's already bound, a copy is already
         // running — quit this one so we never stack two menu-bar icons.

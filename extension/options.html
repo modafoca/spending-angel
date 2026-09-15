@@ -16,6 +16,17 @@
       </div>
     </header>
 
+    <!-- PAIRING (NATIVE-01) -->
+    <section class="card pixel" id="pair-card">
+      <h2>Pair with the app</h2>
+      <p class="note">Open Spending Angel in the menu bar, hit COPY under PAIR SENSOR, paste it here. The token never leaves this machine.</p>
+      <form id="token-form" class="add-row">
+        <input id="token-input" class="field" type="text" placeholder="paste the 64-character token" autocomplete="off" spellcheck="false" />
+        <button class="btn btn-cyan" type="submit">Save</button>
+      </form>
+      <p id="token-state" class="note"></p>
+    </section>
+
     <section class="card pixel">
       <h2>Where should the Angel watch?</h2>
       <label class="mode">
@@ -56,7 +67,7 @@
       <ul id="block-list" class="list"></ul>
     </section>
 
-    <footer class="foot">Spending Angel sensor v0.4 · your lists never leave this device</footer>
+    <footer class="foot">Spending Angel sensor v0.5 · your lists never leave this device</footer>
   </main>
 
   <script src="domains.js"></script>

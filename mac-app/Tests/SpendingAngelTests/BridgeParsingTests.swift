@@ -40,29 +40,26 @@ struct BridgeParsingTests {
 
     // MARK: Intent decoding + validation
 
-    private func intent(type: String = "checkout_intent", trigger: String = "click",
-                        hostname: String = "amazon.com", id: String? = "abc-123") -> Intent {
-        Intent(id: id, type: type, trigger: trigger, hostname: hostname, ts: 1_700_000_000_000)
-    }
+    // `makeIntent` comes from TestFixtures.swift.
 
     @Test func validIntentPasses() {
-        #expect(BridgeServer.validate(intent()) == nil)
-        #expect(BridgeServer.validate(intent(trigger: "load")) == nil)
-        #expect(BridgeServer.validate(intent(trigger: "simulated", id: nil)) == nil)  // old sensor, no id
+        #expect(BridgeServer.validate(makeIntent()) == nil)
+        #expect(BridgeServer.validate(makeIntent(trigger: "load")) == nil)
+        #expect(BridgeServer.validate(makeIntent(trigger: "simulated", id: nil)) == nil)  // old sensor, no id
     }
 
     @Test func wrongTypeRejected() {
-        #expect(BridgeServer.validate(intent(type: "foo")) != nil)
+        #expect(BridgeServer.validate(makeIntent(type: "foo")) != nil)
     }
 
     @Test func unknownTriggerRejected() {
-        #expect(BridgeServer.validate(intent(trigger: "keypress")) != nil)
+        #expect(BridgeServer.validate(makeIntent(trigger: "keypress")) != nil)
     }
 
     @Test func badHostnameRejected() {
-        #expect(BridgeServer.validate(intent(hostname: "")) != nil)
-        #expect(BridgeServer.validate(intent(hostname: "   ")) != nil)
-        #expect(BridgeServer.validate(intent(hostname: String(repeating: "a", count: 300))) != nil)
+        #expect(BridgeServer.validate(makeIntent(hostname: "")) != nil)
+        #expect(BridgeServer.validate(makeIntent(hostname: "   ")) != nil)
+        #expect(BridgeServer.validate(makeIntent(hostname: String(repeating: "a", count: 300))) != nil)
     }
 
     @Test func decodeWithAndWithoutID() throws {

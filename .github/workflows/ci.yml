@@ -1,6 +1,8 @@
 # Spending Angel — CI (M-F1).
-# Two halves, two jobs: the Swift menu-bar app builds + tests on macOS;
-# the extension's pure detection logic tests on Linux (fast + free).
+# Two halves, two jobs: the Swift menu-bar app builds + tests on macOS
+# (macos-15 + DEVELOPER_DIR pinned to Xcode 16.4 — Swift 6.1.2, needed for the
+# Swift Testing module); the extension's pure detection logic tests on Linux
+# (fast + free).
 name: CI
 
 on:
@@ -10,11 +12,25 @@ on:
 jobs:
   mac-app:
     name: macOS app (build + test)
-    runs-on: macos-14
+    runs-on: macos-15
+    env:
+      # Pin the toolchain instead of trusting the image default (review 2026-09).
+      # The image default is not a contract: macos-14 resolved to a toolchain
+      # without the Swift Testing module and this job only went green once it
+      # moved to macos-15 (commit fff0f1a). Xcode 16.4 = Swift 6.1.2, the version
+      # run 34940554506 passed on. If the image ever drops this Xcode, the
+      # "Swift version" step below fails immediately with a missing DEVELOPER_DIR
+      # instead of a confusing test-time error.
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
       - name: Swift version
-        run: swift --version
+        # A real assertion: the first line prints the toolchain for the log, the
+        # second fails the job unless it is Swift 6.1.2. Anything else means the
+        # pin above no longer matches the runner image — fix the pin, don't unpin.
+        run: |
+          swift --version
+          swift --version 2>&1 | grep -q 'Swift version 6\.1\.2'
       - name: Build
         run: swift build --package-path mac-app
       - name: Test

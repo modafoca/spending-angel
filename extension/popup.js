@@ -12,15 +12,29 @@ function renderIntent(intent) {
   $("last-intent").textContent = intent ? JSON.stringify(intent, null, 2) : "none yet";
 }
 
-function renderBridge(ok, at) {
+// App connection. `ok` is what the SW last saw; `why` disambiguates a false:
+// "unpaired" (no token, nothing sent), "unauthorized" (app said 401), or
+// anything else = the app wasn't reachable. The pair hint only shows for the
+// two states the user can fix in Options.
+function renderBridge(ok, at, why) {
   const el = $("bridge-status");
+  const hint = $("bridge-hint");
   const when = at ? new Date(at).toLocaleTimeString() : "";
+  hint.hidden = true;
   if (ok === null || ok === undefined) {
     el.textContent = "Not tried yet";
     el.className = "status";
   } else if (ok) {
     el.textContent = `Connected ✓  ${when}`;
     el.className = "status ok";
+  } else if (why === "unpaired") {
+    el.textContent = "Not paired ✕ — paste the app's token";
+    el.className = "status bad";
+    hint.hidden = false;
+  } else if (why === "unauthorized") {
+    el.textContent = "Token rejected ✕ — re-pair";
+    el.className = "status bad";
+    hint.hidden = false;
   } else {
     el.textContent = `App not reachable ✕  ${when}`;
     el.className = "status bad";
@@ -104,9 +118,11 @@ async function onSiteAction() {
 // ---- Boot -------------------------------------------------------------------
 
 async function loadDebug() {
-  const s = await chrome.storage.local.get({ lastIntent: null, bridgeOk: null, bridgeAt: null, saLogs: [] });
+  const s = await chrome.storage.local.get({
+    lastIntent: null, bridgeOk: null, bridgeAt: null, bridgeWhy: null, saLogs: [],
+  });
   renderIntent(s.lastIntent);
-  renderBridge(s.bridgeOk, s.bridgeAt);
+  renderBridge(s.bridgeOk, s.bridgeAt, s.bridgeWhy);
   renderEvents(s.saLogs);
 }
 
@@ -115,6 +131,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   $("site-action").addEventListener("click", onSiteAction);
   $("open-options").addEventListener("click", (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); });
+  $("open-options-pair").addEventListener("click", (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); });
 
   $("simulate").addEventListener("click", async () => {
     const payload = {
@@ -134,7 +151,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (area !== "local") return;
     if (changes.lastIntent) renderIntent(changes.lastIntent.newValue);
     if (changes.saLogs) renderEvents(changes.saLogs.newValue);
-    if (changes.bridgeOk || changes.bridgeAt) loadDebug();
+    if (changes.bridgeOk || changes.bridgeAt || changes.bridgeWhy) loadDebug();
     if (changes.saMode || changes.saAllowlist || changes.saBlocklist) renderSite();
   });
 });

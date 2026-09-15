@@ -4,10 +4,15 @@ import AppKit
 /// The menu-bar dropdown — the "brain." Pixel font + dark/cyan theme.
 /// Inputs, boxes and buttons use pixel-stepped rounded corners; the avatar grid
 /// keeps smooth corners. Stat box is fixed-height so switching characters never
-/// resizes the window.
+/// resizes the window. The stat is derived from the *current* month on a
+/// minute timeline, so a stale count never survives a month boundary
+/// (NATIVE-02). PAIR SENSOR shows the bridge token with a COPY button — the
+/// one-time, human-mediated handshake with the browser extension (NATIVE-01).
 struct DropdownView: View {
     @ObservedObject var store: Store
     var onTest: () -> Void
+
+    @State private var copied = false          // "COPIED" flash after copyToken()
 
     private let statHeight: CGFloat = 74
     private let slot: CGFloat = 66
@@ -21,6 +26,7 @@ struct DropdownView: View {
             picker
             shuffleRow
             stat
+            pairRow
             controls
         }
         .padding(16)
@@ -111,27 +117,77 @@ struct DropdownView: View {
         }
     }
 
+    // Re-evaluated every minute so the month boundary flips the box to "No
+    // catches yet" without a stored write; the outer frame stays fixed-height.
     private var stat: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            if store.monthlyCount == 0 {
-                Text("No catches yet this month.")
-                    .font(.pixel(10)).foregroundColor(Theme.pxDim)
-            } else {
-                Text(store.activeCharacter.brag(count: store.monthlyCount, goal: store.goal))
-                    .font(.pixel(11)).foregroundColor(Theme.pxInk)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let days = store.streakDays {
-                    Text(store.activeCharacter.streak(days: days))
-                        .font(.pixel(9)).foregroundColor(Theme.pxDim)
+        TimelineView(.everyMinute) { context in
+            let count = store.catchCount(inMonthContaining: context.date)
+            VStack(alignment: .leading, spacing: 5) {
+                if count == 0 {
+                    Text("No catches yet this month.")
+                        .font(.pixel(10)).foregroundColor(Theme.pxDim)
+                } else {
+                    Text(store.activeCharacter.brag(count: count, goal: store.goal))
+                        .font(.pixel(11)).foregroundColor(Theme.pxInk)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let last = store.lastCatchDate {
+                        Text(store.activeCharacter.streak(days: Store.daysBetween(last, context.date)))
+                            .font(.pixel(9)).foregroundColor(Theme.pxDim)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, minHeight: statHeight, maxHeight: statHeight, alignment: .topLeading)
         .padding(11)
         .background(pxCorner.fill(Theme.pxPanel))
         .overlay(pxCorner.stroke(Theme.pxLine, lineWidth: 1.5))
+    }
+
+    // PAIR SENSOR — the token box uses the goalField recipe; COPY puts the
+    // token on the pasteboard for the extension's Options page. "regenerate"
+    // mints a new one and silently unpairs whatever held the old value.
+    private var pairRow: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("PAIR SENSOR")
+                .font(.pixel(9)).tracking(1).foregroundColor(Theme.pxDim)
+            HStack(spacing: 8) {
+                Text(store.bridgeToken)
+                    .font(.pixel(9))
+                    .foregroundColor(Theme.pxInk)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10).padding(.vertical, 9)
+                    .background(pxCorner.fill(Theme.pxPanel))
+                    .overlay(pxCorner.stroke(Theme.pxLine, lineWidth: 1.5))
+                Button { copyToken() } label: {
+                    Text(copied ? "COPIED" : "COPY")
+                        .font(.pixel(9, bold: true))
+                        .foregroundColor(Theme.pxInk)
+                        .padding(.horizontal, 10).padding(.vertical, 9)
+                        .overlay(pxCorner.stroke(Theme.pxLine, lineWidth: 1.5))
+                }
+                .buttonStyle(.plain)
+            }
+            HStack {
+                Text("Paste it in the sensor's Options page.")
+                    .font(.pixel(8)).foregroundColor(Theme.pxDim)
+                Spacer()
+                linkButton("regenerate") { store.regenerateBridgeToken() }
+            }
+        }
+    }
+
+    private func copyToken() {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(store.bridgeToken, forType: .string)
+        Log.info("pair.token_copied", "token copied to pasteboard", ["token_tail": String(store.bridgeToken.suffix(4))])
+        copied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
     }
 
     private var controls: some View {

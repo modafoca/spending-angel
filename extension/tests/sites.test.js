@@ -94,3 +94,21 @@ test("remove takes a host or a URL", () => {
   assert.deepEqual(saRemoveFromList(["amazon.com", "ebay.com"], "https://www.amazon.com/"), ["ebay.com"]);
   assert.deepEqual(saRemoveFromList(["amazon.com", "ebay.com"], "ebay.com"), ["amazon.com"]);
 });
+
+// --- saNormalizeBridgeToken (NATIVE-01 pairing) ---
+
+const { saNormalizeBridgeToken } = require("../sites.js");
+const HEX64 = "0123456789abcdef".repeat(4);
+
+test("saNormalizeBridgeToken accepts 64 hex, trims and lowercases", () => {
+  assert.equal(saNormalizeBridgeToken("  " + "AB".repeat(32) + "\n"), "ab".repeat(32));
+  assert.equal(saNormalizeBridgeToken(HEX64), HEX64);
+  assert.equal(saNormalizeBridgeToken("\t" + HEX64.toUpperCase() + "  "), HEX64);
+});
+
+test("saNormalizeBridgeToken rejects junk", () => {
+  for (const bad of ["", null, undefined, HEX64.slice(0, 63), HEX64 + "0", "g".repeat(64),
+                     HEX64.slice(0, 32) + " " + HEX64.slice(33), "Bearer " + HEX64, 42, {}]) {
+    assert.equal(saNormalizeBridgeToken(bad), "", `should reject: ${String(bad)}`);
+  }
+});
