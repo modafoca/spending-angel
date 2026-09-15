@@ -38,6 +38,23 @@ final class Log {
         shared.write(.error, event, msg, fields)
     }
 
+    /// Bounded copy of an untrusted string for log fields: the longest prefix that
+    /// fits in `max` UTF-8 bytes without splitting a scalar, plus "…" when cut.
+    /// Bounds BYTES, not Characters: one grapheme cluster can carry thousands of
+    /// combining marks, so `prefix(max)` on a String is no bound at all. Keeps a
+    /// hostile 1 MB id from becoming a 1 MB log line. Pure; unit-tested.
+    static func clip(_ value: String, max: Int = 256) -> String {
+        if value.utf8.count <= max { return value }
+        var out = String.UnicodeScalarView()
+        var used = 0
+        for scalar in value.unicodeScalars {
+            let n = scalar.utf8.count
+            if used + n > max { break }
+            out.append(scalar); used += n
+        }
+        return String(out) + "…"
+    }
+
     private let osLog = Logger(subsystem: Log.subsystem, category: "app")
     private let queue = DispatchQueue(label: Log.subsystem + ".log", qos: .utility)
     private let dir: URL

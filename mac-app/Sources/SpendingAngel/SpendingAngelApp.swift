@@ -12,11 +12,13 @@ struct SpendingAngelApp: App {
         MenuBarExtra {
             DropdownView(store: store) {
                 // Manual test fires regardless of on-duty state; honors Shake It Up
-                // for character choice, and counts toward the stat.
+                // for character choice, and counts toward the stat — but only when
+                // the overlay actually admitted it (CatchRunner, NATIVE-03).
                 let character = store.nextCatchCharacter()
-                store.recordCatch()
-                Log.info("catch.performed", "manual test", ["character": character.rawValue, "source": "test"])
-                delegate.overlay.performCatch(goal: store.goal, character: character)
+                CatchRunner.run(goal: store.goal, character: character,
+                                source: "test", hostname: "manual test", intentID: nil,
+                                perform: { g, c in delegate.overlay.performCatch(goal: g, character: c) },
+                                record: store.recordCatch)
             }
         } label: {
             Image(nsImage: AppIcons.menuBar)

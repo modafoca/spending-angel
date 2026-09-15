@@ -6,14 +6,33 @@ import SwiftUI
 ///   t+0.0  show panel; character animates/enters; clicks intercepted; voice plays
 ///   t+0.5  intercept releases (panel becomes click-through)
 ///   t+hold auto-dismiss (long enough for the whole voice line)
+///
+/// This is the single admission point for a catch: `performCatch` answers
+/// whether the performance actually went on screen, and callers (via
+/// `CatchRunner`) count and log a catch only on `true` — so a second intent
+/// that lands while a 12 s clip is still holding the panel is a
+/// `catch.skipped_busy`, not a phantom stat increment (NATIVE-03).
 final class OverlayController {
     private var panel: NSPanel?
     private var model: CatchModel?
     private var autoDismiss: DispatchWorkItem?
 
-    func performCatch(goal: String, character: CharacterID) {
-        guard panel == nil else { return }             // a catch is already on screen — ignore
-        guard let screen = NSScreen.main else { return }   // re-triggers (avoids audio/anim races)
+    /// Whether a performance is on screen right now (admission gate + a
+    /// window-server-free way to reason about state).
+    var isPerforming: Bool { panel != nil }
+
+    /// Starts the catch sequence. Returns false — and does nothing else — when a
+    /// catch is already on screen or there is no main screen; true once the panel
+    /// is up. Callers must count/log the catch only on true.
+    @discardableResult
+    func performCatch(goal: String, character: CharacterID) -> Bool {
+        // Already on screen — the caller logs skipped_busy; also avoids
+        // audio/anim races on re-trigger.
+        guard panel == nil else { return false }
+        guard let screen = NSScreen.main else {
+            Log.error("overlay.no_screen", "no main screen — catch dropped")
+            return false
+        }
 
         // Pick the line + its caption up front so the bubble can type the exact
         // text being spoken. Falls back to the goal reminder if no caption yet.
@@ -57,6 +76,7 @@ final class OverlayController {
         let work = DispatchWorkItem { [weak self] in self?.dismiss(animated: true) }
         autoDismiss = work
         DispatchQueue.main.asyncAfter(deadline: .now() + hold, execute: work)
+        return true
     }
 
     /// Used until a character has a captions.json — keeps the goal reminder.

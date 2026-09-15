@@ -1,9 +1,16 @@
 import Foundation
 import Combine
+import Security
 
 /// The brain's persistent state: goal, active character, on/off, snooze, shuffle,
-/// and the M-04 stat (monthly catch count + streak). Backed by UserDefaults.
-/// A shared singleton so the SwiftUI scene + the AppDelegate bridge use one instance.
+/// the M-04 stat (monthly catch count + streak), and the bridge pairing token.
+/// Backed by UserDefaults. A shared singleton so the SwiftUI scene + the
+/// AppDelegate bridge use one instance.
+///
+/// The pairing token (audit 2026-09, NATIVE-01) is the one secret in the app:
+/// 32 random bytes as 64 lowercase hex, minted on first launch, shown under
+/// PAIR SENSOR in the dropdown and pasted into the extension's Options page.
+/// It is never logged — at most its last 4 chars (`token_tail`).
 final class Store: ObservableObject {
     static let shared = Store()
 
@@ -18,6 +25,9 @@ final class Store: ObservableObject {
     @Published var countMonth: String          // "yyyy-MM"
     @Published var lastCatchDate: Date?
 
+    // NATIVE-01 — bridge pairing token (64 lowercase hex)
+    @Published var bridgeToken: String
+
     private var lastShuffled: CharacterID?     // anti-repeat for shuffle
     private let d = UserDefaults.standard
     private var bag = Set<AnyCancellable>()
@@ -30,9 +40,25 @@ final class Store: ObservableObject {
         snoozeUntil = (stored.map { $0 > Date() } ?? false) ? stored : nil
         shuffleMode = d.bool(forKey: "shuffleMode")
 
+        // No rollover here: the dropdown derives the displayed count from the
+        // current month (`catchCount(inMonthContaining:)`); recordCatch() rolls.
         monthlyCount = d.integer(forKey: "monthlyCount")
         countMonth = d.string(forKey: "countMonth") ?? Store.monthKey(Date())
         lastCatchDate = d.object(forKey: "lastCatchDate") as? Date
+
+        // A missing or corrupted token is replaced immediately and persisted
+        // before any sink exists, so the bridge never sees an empty expected token.
+        let storedToken = d.string(forKey: "bridgeToken")
+        if let t = storedToken, Store.isValidBridgeToken(t) {
+            bridgeToken = t
+        } else {
+            let fresh = Store.generateBridgeToken()
+            bridgeToken = fresh
+            d.set(fresh, forKey: "bridgeToken")
+            Log.info("store.token_generated", "new pairing token",
+                     ["reason": storedToken == nil ? "first_launch" : "invalid_stored",
+                      "token_tail": String(fresh.suffix(4))])
+        }
 
         $goal.dropFirst().sink { [weak self] in self?.d.set($0, forKey: "goal") }.store(in: &bag)
         $activeCharacter.dropFirst().sink { [weak self] in self?.d.set($0.rawValue, forKey: "activeCharacter") }.store(in: &bag)
@@ -42,6 +68,7 @@ final class Store: ObservableObject {
         $monthlyCount.dropFirst().sink { [weak self] in self?.d.set($0, forKey: "monthlyCount") }.store(in: &bag)
         $countMonth.dropFirst().sink { [weak self] in self?.d.set($0, forKey: "countMonth") }.store(in: &bag)
         $lastCatchDate.dropFirst().sink { [weak self] in self?.d.set($0, forKey: "lastCatchDate") }.store(in: &bag)
+        $bridgeToken.dropFirst().sink { [weak self] in self?.d.set($0, forKey: "bridgeToken") }.store(in: &bag)
     }
 
     var isSnoozed: Bool {
@@ -70,6 +97,42 @@ final class Store: ObservableObject {
         return pick
     }
 
+    // MARK: - Pairing token
+
+    /// 32 CSPRNG bytes → 64 lowercase hex chars. Pure; no UserDefaults.
+    /// SecRandomCopyBytes is the source; if it ever fails we log it and fall
+    /// back to the system generator (arc4random-backed on Apple platforms)
+    /// rather than ship an empty token.
+    static func generateBridgeToken() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        if status != errSecSuccess {
+            Log.error("store.token_random_fallback", "SecRandomCopyBytes failed (\(status)) — using SystemRandomNumberGenerator")
+            var g = SystemRandomNumberGenerator()
+            for i in bytes.indices { bytes[i] = UInt8.random(in: .min ... .max, using: &g) }
+        }
+        let hex: [Character] = Array("0123456789abcdef")
+        var out = ""
+        out.reserveCapacity(64)
+        for b in bytes {
+            out.append(hex[Int(b >> 4)])
+            out.append(hex[Int(b & 0x0f)])
+        }
+        return out
+    }
+
+    /// `^[0-9a-f]{64}$` — what the extension stores and the bridge compares.
+    static func isValidBridgeToken(_ t: String) -> Bool {
+        t.utf8.count == 64 && t.utf8.allSatisfy { ($0 >= 0x30 && $0 <= 0x39) || ($0 >= 0x61 && $0 <= 0x66) }
+    }
+
+    /// Mints a new token, invalidating any sensor paired with the old one. Takes
+    /// effect on the very next bridge request (no restart, no grace period).
+    func regenerateBridgeToken() {
+        bridgeToken = Store.generateBridgeToken()
+        Log.info("store.token_regenerated", "sensor must be re-paired", ["token_tail": String(bridgeToken.suffix(4))])
+    }
+
     // MARK: - Stat
 
     func recordCatch() {
@@ -81,9 +144,16 @@ final class Store: ObservableObject {
         Log.info("store.catch_recorded", "monthly count now \(monthlyCount)", ["month": m])
     }
 
-    var streakDays: Int? {
-        guard let last = lastCatchDate else { return nil }
-        return Store.daysBetween(last, Date())
+    /// The count to *display*: the stored counter only if it belongs to the
+    /// month containing `date`, else 0. `recordCatch()` still rolls the stored
+    /// month; this keeps a stale August count from showing in September (NATIVE-02).
+    static func catchCount(monthlyCount: Int, countMonth: String,
+                           at date: Date, calendar: Calendar = .current) -> Int {
+        monthKey(date, calendar: calendar) == countMonth ? monthlyCount : 0
+    }
+
+    func catchCount(inMonthContaining date: Date, calendar: Calendar = .current) -> Int {
+        Store.catchCount(monthlyCount: monthlyCount, countMonth: countMonth, at: date, calendar: calendar)
     }
 
     // The calendar parameter makes the date math deterministic and unit-testable;
