@@ -149,4 +149,51 @@ struct CatchRunnerTests {
         #expect(records == 1)
         #expect(events == ["catch.skipped_busy", "catch.skipped_busy", "catch.performed"])
     }
+
+    // MARK: hostname is bounded at every log site (review R-03)
+
+    @Test func hostnameIsBoundedEvenWhenValidateWasBypassed() {
+        // 20,009 bytes of padded name straight into the runner (validate() is
+        // upstream and could be bypassed by a future caller). Both outcomes log
+        // a msg of exactly Log.clip's 256 + "…" = 259 bytes.
+        let padded = String(repeating: " ", count: 20_000) + "shop.test"
+        #expect(padded.utf8.count == 20_009)
+        for outcome in [true, false] {
+            var events: [(event: String, msg: String)] = []
+            _ = CatchRunner.run(goal: "g", character: .angel, source: "bridge", hostname: padded, intentID: "p-1",
+                                perform: { _, _ in outcome }, record: {},
+                                log: { e, m, _ in events.append((e, m)) })
+            #expect(events.count == 1)
+            #expect(events[0].event == (outcome ? "catch.performed" : "catch.skipped_busy"))
+            #expect(events[0].msg.utf8.count == 259)
+            #expect(events[0].msg.hasSuffix("…"))
+            #expect(!events[0].msg.contains("shop.test"))   // the name itself is beyond the clip
+        }
+    }
+
+    @Test func shortHostnamePassesThroughUnchanged() {
+        var msg: String?
+        _ = CatchRunner.run(goal: "g", character: .papi, source: "bridge", hostname: "amazon.com", intentID: "x",
+                            perform: { _, _ in true }, record: {}, log: { _, m, _ in msg = m })
+        #expect(msg == "amazon.com")
+    }
+
+    @Test func skipOffDutyLogsBoundedHostname() {
+        let padded = String(repeating: " ", count: 20_000) + "shop.test"
+        var events: [(event: String, msg: String, fields: [String: String])] = []
+        CatchRunner.skipOffDuty(hostname: padded, intentID: "abc", log: { e, m, f in events.append((e, m, f)) })
+        #expect(events.count == 1)
+        #expect(events[0].event == "catch.skipped_off_duty")
+        #expect(events[0].msg.utf8.count == 259)
+        #expect(events[0].msg.hasSuffix("…"))
+        #expect(events[0].fields == ["intent_id": "abc"])
+
+        // nil intent id → "" (same shape as CatchRunner.run's fields), short name untouched.
+        var plain: [(event: String, msg: String, fields: [String: String])] = []
+        CatchRunner.skipOffDuty(hostname: "amazon.com", intentID: nil, log: { e, m, f in plain.append((e, m, f)) })
+        #expect(plain.count == 1)
+        #expect(plain[0].event == "catch.skipped_off_duty")
+        #expect(plain[0].msg == "amazon.com")
+        #expect(plain[0].fields == ["intent_id": ""])
+    }
 }

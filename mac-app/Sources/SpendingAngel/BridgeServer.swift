@@ -15,11 +15,24 @@ import Network
 ///
 /// Paired (audit 2026-09, NATIVE-01): the sensor proves it is *our* sensor by
 /// sending `Authorization: Bearer <token>`, where the token is the 64-hex value
-/// the app generated and shows under PAIR SENSOR in the dropdown. Anything
-/// else gets `401` before the body is even decoded, and no CORS headers are
-/// sent on any response, so a web page can neither call the bridge nor read
-/// its answer. The expected token is read per request (injected closure) so a
-/// regeneration in the dropdown takes effect immediately.
+/// the app generated and shows under PAIR SENSOR in the dropdown. The request
+/// is still framed first (header cap, Content-Length, body cap — 431/400/413),
+/// but nothing from the body is decoded or logged until the token has matched:
+/// a wrong or missing token gets `401` before decode. A web page *can* reach
+/// this port with a simple POST (no preflight), but it gets `401`, cannot read
+/// the answer (no CORS headers on any response), cannot attach `Authorization`
+/// (a non-safelisted header forces a preflight this server never satisfies),
+/// and never saw the token in the first place. The expected token is read per
+/// request (injected closure) so a regeneration in the dropdown takes effect
+/// immediately.
+///
+/// Rejection lines (401 / 400 / 413 / 431 / 429) are rate-limited per key —
+/// one line per second, with `suppressed: "<n>"` + `suppressed_since: "<ts>"`
+/// on the first line after a busy window (review 2026-09, S-04) — so a local
+/// loop cannot grow the day's log by one line per connection. The key is the
+/// event name, except `bridge.unauthorized`, which is keyed per reason so a
+/// wrong-token probe is never hidden behind a no-token flood. Status codes are
+/// never throttled.
 ///
 /// Evaluation order (status codes): 431 header cap → 400 bad Content-Length →
 /// 413 body cap (all while framing) → 204 OPTIONS → 405 → 404 → 401 (the pure
@@ -32,6 +45,7 @@ final class BridgeServer {
     static let maxHeaderBytes = 8_192
     static let maxBodyBytes = 1_000_000        // a real intent is < 300 bytes
     static let maxIDLength = 128               // UTF-8 bytes; a UUID is 36
+    static let maxHostnameLength = 253         // UTF-8 bytes of the RAW value, before trimming (RFC 1035 limit)
     static let allowedTriggers: Set<String> = ["click", "load", "simulated"]
     static let connectionTimeout: TimeInterval = 10
     /// Minimum gap between accepted intents. Clips run up to ~12 s so a catch
@@ -52,13 +66,37 @@ final class BridgeServer {
     /// The pairing token the sensor must present. Read per request so the
     /// dropdown's "regenerate" needs no restart and tests need no Store.
     private let expectedToken: () -> String
+    /// Rejection lines share one log throttle so a local loop can't grow the
+    /// log by one line per connection. Distinct from the catch throttle
+    /// (`minCatchInterval`, the 429 path) — this one only decides whether a
+    /// line is written. Injected so a test could pin the wiring with a fake
+    /// clock; production uses the default. Not a function type, so the
+    /// existing trailing-closure call `BridgeServer(expectedToken:) { intent in … }`
+    /// is unaffected.
+    private let logThrottle: LogThrottle
     /// Called when the port is already taken — i.e. another instance is running.
     var onAddressInUse: (() -> Void)?
     private var lastAccepted: Date?
 
-    init(expectedToken: @escaping () -> String, onIntent: @escaping (Intent) -> Void) {
+    init(expectedToken: @escaping () -> String,
+         logThrottle: LogThrottle = LogThrottle(),
+         onIntent: @escaping (Intent) -> Void) {
         self.expectedToken = expectedToken
+        self.logThrottle = logThrottle
         self.onIntent = onIntent
+    }
+
+    /// The one door for rejection lines. `sink` is `Log.info` or `Log.error` —
+    /// passed as a value so this file keeps compiling against a minimal `Log`.
+    /// `key` defaults to the event name; the 401 site passes the event plus its
+    /// public reason word so a mismatch is never hidden behind a missing-token
+    /// flood. Never given token or body bytes: callers pass only what they log
+    /// today, and the key is built from constants and the reason word only.
+    private func logRejected(_ event: String, _ msg: String, _ fields: [String: String] = [:],
+                             key: String? = nil,
+                             via sink: (String, String, [String: String]) -> Void) {
+        guard let extra = logThrottle.admit(key ?? event) else { return }
+        sink(event, msg, fields.merging(extra) { _, new in new })
     }
 
     func start() {
@@ -112,18 +150,18 @@ final class BridgeServer {
             // to slip through because only the no-delimiter branch checked.
             let sep = buf.range(of: Data("\r\n\r\n".utf8))
             if Self.headerExceedsCap(buf, delimiter: sep) {
-                Log.error("bridge.bad_request", "headers exceed \(Self.maxHeaderBytes) bytes")
+                self.logRejected("bridge.bad_request", "headers exceed \(Self.maxHeaderBytes) bytes", via: Log.error)
                 self.respond(conn, status: 431, timeout: timeout); return
             }
 
             if let sep = sep {
                 let header = String(decoding: buf.subdata(in: buf.startIndex..<sep.lowerBound), as: UTF8.self)
                 guard let needed = Self.contentLength(header) else {
-                    Log.error("bridge.bad_request", "unparseable Content-Length")
+                    self.logRejected("bridge.bad_request", "unparseable Content-Length", via: Log.error)
                     self.respond(conn, status: 400, timeout: timeout); return
                 }
                 guard needed <= Self.maxBodyBytes else {
-                    Log.error("bridge.bad_request", "body too large (\(needed) bytes)")
+                    self.logRejected("bridge.bad_request", "body too large (\(needed) bytes)", via: Log.error)
                     self.respond(conn, status: 413, timeout: timeout); return
                 }
                 let body = buf.subdata(in: sep.upperBound..<buf.endIndex)
@@ -147,25 +185,29 @@ final class BridgeServer {
         if let status = Self.gate(method: method, path: path, bearer: bearer, expected: expectedToken()) {
             if status == 401 {
                 // Never log the presented credential — only whether one was there.
-                Log.info("bridge.unauthorized", "rejected", ["reason": bearer == nil ? "missing" : "mismatch"])
+                // Keyed per reason (not per event) so the first wrong-token probe
+                // is written even inside a no-token flood's window.
+                let reason = bearer == nil ? "missing" : "mismatch"
+                logRejected("bridge.unauthorized", "rejected", ["reason": reason],
+                            key: "bridge.unauthorized/" + reason, via: Log.info)
             }
             respond(conn, status: status, timeout: timeout); return
         }
 
         guard let intent = try? JSONDecoder().decode(Intent.self, from: body) else {
-            Log.error("bridge.bad_payload", "POST /intent body is not a valid intent")
+            logRejected("bridge.bad_payload", "POST /intent body is not a valid intent", via: Log.error)
             respond(conn, status: 400, timeout: timeout); return
         }
         if let problem = Self.validate(intent) {
-            Log.error("bridge.invalid_intent", problem, ["intent_id": Log.clip(intent.id ?? "")])
+            logRejected("bridge.invalid_intent", problem, ["intent_id": Log.clip(intent.id ?? "")], via: Log.error)
             respond(conn, status: 400, timeout: timeout); return
         }
 
         // Only reached for authenticated, valid intents — lastAccepted never moves for a 401/400.
         let now = Date()
         if let last = lastAccepted, now.timeIntervalSince(last) < Self.minCatchInterval {
-            Log.info("bridge.intent_throttled", "dropped — last catch \(Int(now.timeIntervalSince(last)))s ago",
-                     ["intent_id": Log.clip(intent.id ?? ""), "hostname": Log.clip(intent.hostname)])
+            logRejected("bridge.intent_throttled", "dropped — last catch \(Int(now.timeIntervalSince(last)))s ago",
+                        ["intent_id": Log.clip(intent.id ?? ""), "hostname": Log.clip(intent.hostname)], via: Log.info)
             respond(conn, status: 429, timeout: timeout); return
         }
         lastAccepted = now
@@ -268,10 +310,12 @@ final class BridgeServer {
         return token.isEmpty ? nil : token
     }
 
-    /// Constant-time comparison. false when `presented` is nil, when `expected`
-    /// is empty (never accept an unset token), or when lengths differ (token
-    /// length is public); otherwise ORs the XOR of every byte pair — no early
-    /// exit inside the loop — and returns diff == 0.
+    /// Constant-time comparison at the source level: false when `presented` is
+    /// nil, when `expected` is empty (never accept an unset token), or when the
+    /// lengths differ (token length is public); otherwise ORs the XOR of every
+    /// byte pair with no data-dependent early exit in the loop and returns
+    /// diff == 0. This is a property of the source, not a guarantee about the
+    /// machine code — the optimizer's timing behaviour is not controlled here.
     static func tokenMatches(_ presented: String?, expected: String) -> Bool {
         guard let presented = presented, !expected.isEmpty else { return false }
         let a = Array(presented.utf8)
@@ -286,16 +330,91 @@ final class BridgeServer {
     /// bound is in UTF-8 bytes (`.utf8.count`), never `String.count`: a single
     /// grapheme cluster can carry thousands of combining marks, so a
     /// cluster-based bound is no bound at all. Untrusted strings that make it
-    /// into the problem text are clipped so the log line stays small.
+    /// into the problem text are clipped so the log line stays small. The
+    /// hostname bound applies to the raw value *before* trimming, so padding
+    /// cannot smuggle an oversized name past the check.
     static func validate(_ i: Intent) -> String? {
         guard i.type == "checkout_intent" else { return "unknown type \"\(Log.clip(i.type, max: 64))\"" }
         guard allowedTriggers.contains(i.trigger) else {
             return "unknown trigger \"\(Log.clip(i.trigger, max: 64))\""
         }
         if let id = i.id, id.utf8.count > maxIDLength { return "bad id" }
+        // Bound the RAW hostname first (review R-03): trimming used to run before
+        // the length check, so 20 KB of padding around a short name passed
+        // validation and reached every log sink untouched. Then the trimmed
+        // value must be non-empty (whitespace-only is not a hostname).
+        guard i.hostname.utf8.count <= maxHostnameLength else { return "bad hostname" }
         let host = i.hostname.trimmingCharacters(in: .whitespaces)
-        guard !host.isEmpty, host.utf8.count <= 253 else { return "bad hostname" }
+        guard !host.isEmpty else { return "bad hostname" }
         return nil
+    }
+}
+
+extension BridgeServer {
+    /// Per-key suppression window for rejection lines (review S-04/Q-12).
+    /// Anything on this Mac can loop on the port; each rejected request used to
+    /// add a line to the day's JSONL with nothing bounding the count. Now each
+    /// key emits at most one line per `window`, and the first line after a
+    /// busy window carries how many were dropped and when the first drop
+    /// happened — a burst followed by hours of silence is still attributable.
+    /// Main-queue confined like the rest of the server (no lock). `now` is
+    /// injected so the algorithm is unit-tested with a fake clock.
+    ///
+    /// Lives in this file on purpose: the review fixtures compile
+    /// `BridgeServer.swift` standalone against a stub `Log`, so the throttle
+    /// must not need another file or anything beyond Foundation.
+    final class LogThrottle {
+        static let defaultWindow: TimeInterval = 1
+
+        /// One key's state: when its window opened (the clock of the last
+        /// emitted line), how many lines were dropped since, and the clock of
+        /// the first of those drops.
+        private struct Slot { var openedAt: Date; var dropped: Int; var firstDroppedAt: Date? }
+        private var slots: [String: Slot] = [:]
+        private let window: TimeInterval
+        private let now: () -> Date
+        /// ISO 8601 at second resolution (`2023-11-14T22:13:20Z`). Unlike the
+        /// line's own `ts`, which carries fractional seconds, this drops them,
+        /// so a lexical comparison against `ts` is exact only to the second —
+        /// enough to bound the burst as `[suppressed_since, ts]` of the
+        /// reporting line.
+        private let iso = ISO8601DateFormatter()
+
+        init(window: TimeInterval = LogThrottle.defaultWindow, now: @escaping () -> Date = Date.init) {
+            self.window = window
+            self.now = now
+        }
+
+        /// Decide whether a line for `key` may be written now.
+        /// - Returns: `nil` → drop it. Otherwise the extra fields to merge into
+        ///   the line: `[:]` normally, `["suppressed": "<n>", "suppressed_since":
+        ///   "<ISO ts>"]` when `n ≥ 1` lines for this key were dropped since the
+        ///   previous emitted line (`suppressed_since` = clock of the FIRST drop).
+        ///
+        /// The window is `[openedAt, openedAt + window)` and opens at the clock
+        /// of an *emitted* line; a line at exactly `openedAt + window` is
+        /// emitted, and dropped lines never extend it. A clock that went
+        /// backwards (`elapsed < 0`) counts as "window over" — emit, report, and
+        /// reopen at the new time — so a wall-clock adjustment can never mute a
+        /// key for longer than one real window.
+        func admit(_ key: String) -> [String: String]? {
+            let t = now()
+            guard let slot = slots[key] else {
+                slots[key] = Slot(openedAt: t, dropped: 0, firstDroppedAt: nil)   // first line ever: emit
+                return [:]
+            }
+            let elapsed = t.timeIntervalSince(slot.openedAt)
+            if elapsed >= 0 && elapsed < window {
+                var busy = slot
+                busy.dropped += 1
+                if busy.firstDroppedAt == nil { busy.firstDroppedAt = t }
+                slots[key] = busy
+                return nil                                                           // inside the window: drop
+            }
+            slots[key] = Slot(openedAt: t, dropped: 0, firstDroppedAt: nil)          // reopen at THIS line
+            guard slot.dropped > 0, let since = slot.firstDroppedAt else { return [:] }
+            return ["suppressed": String(slot.dropped), "suppressed_since": iso.string(from: since)]
+        }
     }
 }
 

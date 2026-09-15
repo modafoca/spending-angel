@@ -3,9 +3,11 @@ import Testing
 @testable import SpendingAngel
 
 /// Bridge hardening (audit 2026-09): the header cap is enforced whether or not
-/// the "\r\n\r\n" delimiter has arrived, `id` is bounded, and every bound is in
-/// UTF-8 bytes — a grapheme cluster can carry thousands of combining marks, so
-/// `String.count` is no bound at all. All statics, no Log writes.
+/// the "\r\n\r\n" delimiter has arrived, `id` is bounded, the hostname bound is
+/// checked on the raw value before trimming (review R-03) so padding counts,
+/// and every bound is in UTF-8 bytes — a grapheme cluster can carry thousands
+/// of combining marks, so `String.count` is no bound at all. All statics, no
+/// Log writes.
 struct BridgeHardeningTests {
 
     private static let crlf2 = Data("\r\n\r\n".utf8)
@@ -15,6 +17,7 @@ struct BridgeHardeningTests {
 
     @Test func maxIDLengthIsPinned() {
         #expect(BridgeServer.maxIDLength == 128)
+        #expect(BridgeServer.maxHostnameLength == 253)
         #expect(BridgeServer.maxHeaderBytes == 8_192)
         #expect(BridgeServer.maxBodyBytes == 1_000_000)
     }
@@ -47,16 +50,45 @@ struct BridgeHardeningTests {
         #expect(BridgeServer.validate(makeIntent(id: String(repeating: "é", count: 65))) == "bad id")
     }
 
-    // MARK: hostname bound (1…253 UTF-8 bytes after trimming)
+    // MARK: hostname bound (raw ≤ 253 UTF-8 bytes; trimmed non-empty)
 
     @Test func hostnameAtBoundPasses() {
         #expect(BridgeServer.validate(makeIntent(hostname: String(repeating: "a", count: 253))) == nil)
-        #expect(BridgeServer.validate(makeIntent(hostname: "  " + String(repeating: "a", count: 253) + "  ")) == nil)
+        #expect(BridgeServer.validate(makeIntent(hostname: " " + String(repeating: "a", count: 252))) == nil)   // raw 253, padding included
         #expect(BridgeServer.validate(makeIntent(hostname: "a")) == nil)
     }
 
     @Test func hostnameOverBoundRejected() {
         #expect(BridgeServer.validate(makeIntent(hostname: String(repeating: "a", count: 254))) == "bad hostname")
+    }
+
+    // MARK: hostname bound is on the RAW value (R-03)
+
+    @Test func paddedHostnameIsRejectedRaw() {
+        // Review R-03: the bound used to run on the trimmed copy, so 20 KB of
+        // padding around a short name sailed through validate() and reached
+        // every log sink untouched. Padding now counts against the 253 bytes.
+        let padded = String(repeating: " ", count: 20_000) + "shop.test"
+        #expect(padded.utf8.count == 20_009)
+        #expect(BridgeServer.validate(makeIntent(hostname: padded)) == "bad hostname")
+        #expect(BridgeServer.validate(makeIntent(hostname: " " + String(repeating: "a", count: 253))) == "bad hostname")          // 254
+        // Formerly accepted by hostnameAtBoundPasses — the expectation flip is intentional.
+        #expect(BridgeServer.validate(makeIntent(hostname: "  " + String(repeating: "a", count: 253) + "  ")) == "bad hostname")  // 257
+        #expect(BridgeServer.validate(makeIntent(hostname: "\t" + String(repeating: "a", count: 253))) == "bad hostname")         // any padding counts
+    }
+
+    @Test func whitespaceOnlyHostnameStillRejectedAfterTrim() {
+        // Both fail with the same string: 253 spaces pass the raw bound and die
+        // on the trimmed-empty check; 254 die on the raw bound. Pinned so nobody
+        // "improves" one of them into a different message.
+        #expect(BridgeServer.validate(makeIntent(hostname: String(repeating: " ", count: 253))) == "bad hostname")
+        #expect(BridgeServer.validate(makeIntent(hostname: String(repeating: " ", count: 254))) == "bad hostname")
+    }
+
+    @Test func hostnameOrderRawThenTrimmed() {
+        // id is still checked before hostname, raw bound or not.
+        let bad = makeIntent(hostname: String(repeating: " ", count: 300), id: String(repeating: "a", count: 200))
+        #expect(BridgeServer.validate(bad) == "bad id")
     }
 
     @Test func hostnameBoundIsBytesNotGraphemes() {
