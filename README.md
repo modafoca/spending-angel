@@ -38,7 +38,7 @@ make update
 
 ### Uninstalling
 
-`make uninstall` stops the app and removes it and the login item; settings and logs stay so a reinstall picks up where you left off. `PURGE=1 make uninstall` removes those too. The extension is removed from `chrome://extensions` like any other.
+`make uninstall` stops the app and removes it and the login item; settings and logs stay so a reinstall picks up where you left off. `PURGE=1 make uninstall` also removes logs and settings from both the installed app and the older development app, including their pairing tokens, so reinstalling starts fresh. The extension is removed from `chrome://extensions` like any other.
 
 ## Developing
 
@@ -131,11 +131,14 @@ spending-angel/
 
 ## Tests
 
-`make test` runs both, or by hand:
+`make test` runs the extension, script regression, and native suites, or by hand:
 
 ```bash
 # extension (Node 20+)
 node --test extension/tests/*.test.js
+
+# uninstall regression tests (isolated command stubs; no real uninstall)
+node --test scripts/tests/*.test.cjs
 
 # app (needs full Xcode — Command Line Tools alone lack the Testing module)
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --package-path mac-app

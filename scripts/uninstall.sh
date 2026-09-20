@@ -4,8 +4,9 @@
 # Stops the app, removes the LaunchAgent plist and ~/Applications/Spending
 # Angel.app. Settings (UserDefaults under net.modafoca.spendingangel — goal,
 # character, counter, pairing token) and logs are kept unless `--purge` is
-# given, so a reinstall picks up where you left off. Idempotent: safe to run
-# when nothing is installed.
+# given, so a reinstall picks up where you left off. Purge also removes the
+# legacy development app's settings so migration cannot restore them later.
+# Idempotent: safe to run when nothing is installed.
 set -euo pipefail
 
 usage() { echo "usage: scripts/uninstall.sh [--purge]"; }
@@ -32,7 +33,17 @@ if [ -f "$PLIST" ]; then rm -f "$PLIST"; echo "uninstall: removed $PLIST"; else 
 if [ -d "$DEST" ]; then rm -rf "$DEST"; echo "uninstall: removed $DEST"; else echo "uninstall: no app in ~/Applications"; fi
 
 if [ "$PURGE" = 1 ]; then
-  defaults delete "$LABEL" 2>/dev/null && echo "uninstall: removed settings ($LABEL)" || echo "uninstall: no settings to remove"
+  # First launch imports SpendingAngel into the bundle's defaults domain.
+  # Erase both on explicit purge, otherwise reinstall resurrects the old
+  # goal and pairing token after the migration marker has been deleted.
+  for domain in "$LABEL" SpendingAngel; do
+    if defaults read "$domain" >/dev/null 2>&1; then
+      defaults delete "$domain"
+      echo "uninstall: removed settings ($domain)"
+    else
+      echo "uninstall: no settings to remove ($domain)"
+    fi
+  done
   if [ -d "$LOGS" ]; then rm -rf "$LOGS"; echo "uninstall: removed $LOGS"; else echo "uninstall: no logs to remove"; fi
 else
   echo "uninstall: settings and logs kept (re-run with --purge to remove them)"

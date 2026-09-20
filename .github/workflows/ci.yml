@@ -55,7 +55,12 @@ jobs:
           node-version: 20
       - name: Test
         run: node --test extension/tests/*.test.js
+      - name: Uninstall regression tests
+        run: node --test scripts/tests/*.test.cjs
       - name: Script syntax
         # Cheap parse check of the install/update scripts on the Linux job; the
         # macOS job runs bundle.sh for real.
-        run: bash -n scripts/*.sh
+        run: |
+          for script in scripts/*.sh; do
+            bash -n "$script" || exit $?
+          done

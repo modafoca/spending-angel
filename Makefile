@@ -12,7 +12,7 @@ help:
 	@echo "  make uninstall   stop it, remove the app and the login item (PURGE=1 also wipes settings + logs)"
 	@echo "  make bundle      only build mac-app/.build/Spending Angel.app (safe while the app runs)"
 	@echo "  make run         developer run from source (swift run), no install"
-	@echo "  make test        extension (node --test) + app (swift test) suites"
+	@echo "  make test        extension + script regression tests (node --test) + app (swift test)"
 	@echo ""
 	@echo "  NO_LOGIN_ITEM=1 make install   skip the LaunchAgent and just open the app"
 
@@ -35,6 +35,7 @@ run:
 # is there; otherwise trust whatever `swift` is on PATH (CI pins its own).
 test:
 	node --test extension/tests/*.test.js
+	node --test scripts/tests/*.test.cjs
 	@if [ -d "$(XCODE)" ]; then \
 		echo "DEVELOPER_DIR=$(XCODE) swift test --package-path mac-app"; \
 		DEVELOPER_DIR="$(XCODE)" swift test --package-path mac-app; \
