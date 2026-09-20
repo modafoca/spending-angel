@@ -33,6 +33,11 @@ A `$`-halo icon appears in the menu bar (no Dock icon). Click it for the dropdow
 Only one copy runs at a time: the bridge port doubles as a single-instance lock, so
 a second launch logs `app.duplicate_instance` and quits itself.
 
+Ordinary uninstall keeps settings and logs. `PURGE=1 make uninstall` erases the
+installed app's settings **and** the older development app's `SpendingAngel`
+settings, including both pairing tokens, so first-launch migration cannot restore
+them after reinstalling. The Chrome extension is removed separately.
+
 ### Run from source (development)
 
 ```bash
