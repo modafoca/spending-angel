@@ -25,8 +25,8 @@ Two halves: the app goes into `~/Applications` and starts at login; the Sensor i
    ```
    Builds a release binary, wraps it into **`~/Applications/Spending Angel.app`** (ad-hoc signed, no Dock icon), registers a login item (`~/Library/LaunchAgents/net.modafoca.spendingangel.plist`, so it is back after a reboot), starts it, and waits for the bridge to come up — it prints the version and the log path when it does. Needs Xcode or the Command Line Tools. `NO_LOGIN_ITEM=1 make install` skips the login item and just opens the app once. If you were running the bare `swift run` binary before, its goal, character, counter and pairing token are carried over on the first launch — no re-pairing.
 2. **Load the Sensor.** Open `chrome://extensions`, toggle **Developer mode** on, click **Load unpacked** and pick the **`extension/` folder** (not the repo root — that's where `manifest.json` lives).
-3. **Pair them.** Click the menu-bar icon → under **PAIR SENSOR** hit **COPY**. In Chrome, open the extension's **Options → Pair with the app**, paste the token, **Save**. The options page now reads "Token saved — waiting for the app to confirm (…XXXX)". Step 4 turns that into "Paired".
-4. **Verify.** On the same Options page, the **App** card is the status surface: **Connection** (Connected ✓ and when), **Last request** (what the app did with it — "Character shown — Mom", or why it was skipped: off, snoozed, busy, too soon), and **Versions** (Sensor vX · App vY, with a hint when they disagree). Click **Simulate intent** there: the character should appear on screen and both lines should change. The toolbar popup shows the same lines plus per-site Watch/Stop; pin it (puzzle piece → pin "Spending Angel — Sensor") if you want it handy. "App not reachable" means the app is not running — `make install` again, or check the menu bar.
+3. **Connect the browser.** Click the Mac menu-bar icon → gear → **Browser connection → Copy code**. In Chrome, open Spending Angel’s **Settings → Connect browser**, paste the code, and **Save code**. Setup remains open until the app confirms the connection.
+4. **Verify.** Click **Test connection** in browser Settings. With the app on duty, a character appears and speaks. The status reports when the app last answered and what happened, such as “Mom appeared” or “Snoozed until…”. Once confirmed, connection setup collapses. The Chrome popup focuses on the current site; use **Pause here** or **Watch this site**, and open **Manage sites** for the full list. Versions and activity logs are under **Troubleshooting**.
 
 ### Updating
 
@@ -34,7 +34,7 @@ Two halves: the app goes into `~/Applications` and starts at login; the Sensor i
 make update
 ```
 
-`git pull --ff-only`, then the install above (the running copy is stopped and replaced, settings kept). The Sensor is loaded from the checkout, so its files update with the pull — but **Chrome only picks them up after you reload the extension** at `chrome://extensions` (↻ on "Spending Angel — Sensor"). `make update` prints a reminder when anything under `extension/` changed, and the Options **Versions** row keeps saying "reload the extension" until you do.
+`git pull --ff-only`, then the install above (the running copy is stopped and replaced, settings kept). The Sensor is loaded from the checkout, so its files update with the pull — but **Chrome only picks them up after you reload the extension** at `chrome://extensions` (↻ on "Spending Angel"). `make update` prints a reminder when anything under `extension/` changed, and the Settings update hint keeps saying "reload the extension" until you do.
 
 ### Uninstalling
 
@@ -48,16 +48,16 @@ Run the app from source instead of installing it:
 swift run --package-path mac-app        # or: make run
 ```
 
-or open `mac-app/Package.swift` in Xcode, pick the `SpendingAngel` scheme, Run. Only one copy runs at a time (the bridge port is the lock), so quit the installed one first — and don't `make install` while a `swift run` copy is up: it kills it. The dev binary keeps its settings under the `SpendingAngel` defaults domain, the bundle under `net.modafoca.spendingangel`; the bundle copies the former over once, on its first launch. `make bundle` builds the `.app` without installing it (safe at any time). `make test` runs both suites.
+or open `mac-app/Package.swift` in Xcode, pick the `SpendingAngel` scheme, Run. Only one copy runs at a time (the bridge port is the lock), so quit the installed one first — and don't `make install` while a `swift run` copy is up: it kills it. The dev binary keeps its settings under the `SpendingAngel` defaults domain, the bundle under `net.modafoca.spendingangel`; the bundle copies the former over once, on its first launch. `make bundle` builds the `.app` without installing it (safe at any time). `make test` runs all suites.
 
 > **Pulling this change onto an existing install?** Reload the extension on `chrome://extensions` and pair once — older builds had no token, and the app now answers `401` without one.
 
 ## Using it
 
 - **Goal** — type it in the dropdown under SAVING FOR. Leave it blank and the character falls back to its generic line.
-- **Guardian** — pick one of the cast (The Angel, Dominican Papi, The Wizard, Asian Mom), or flip **SHAKE IT UP** to get a random one per catch.
-- **Sites** — the toolbar popup handles the page you're on ("Watch this site" / "Stop watching", or "Pause on this site" in everywhere mode). **Manage all sites →** opens the options page with the full list.
-- **Off / snooze** — the big button in the dropdown is the master switch; **SNOOZE 1 HR** below it is a nap. Real intents respect both; the tiny **▶ test** link fires a catch regardless so you can hear a character.
+- **Guardian** — pick one of the four characters, or enable **Surprise me** for a random one per catch.
+- **Sites** — the Chrome popup offers **Watch this site**, **Pause here**, or **Resume here**. **Manage sites →** opens browser Settings.
+- **Off / snooze** — **Turn off / Turn on** and **Snooze 1h / Wake up** sit side by side. **Try character** plays a catch even while off or snoozed. The gear opens connection setup, version information, and Quit.
 
 ## How a catch works
 
@@ -103,7 +103,7 @@ The token is the only secret in the system, and it never leaves the machine: the
 
 ## Security note
 
-The bridge listens on loopback only. Every request needs the bearer token (constant-time compare); a wrong or missing one gets `401`, and nothing from the body is decoded or logged. There are no CORS headers, so a web page cannot read a response even if it manages to reach the port. Headers, body and intent `id` are capped (8 KB / 1 MB / 128 bytes), logged fields are truncated, and rejection log lines are rate-limited to one per second per event. If you suspect the token leaked, regenerate it from the PAIR SENSOR row in the dropdown and paste the new one into Options; the old one stops working immediately.
+The bridge listens on loopback only. Every request needs the bearer token (constant-time compare); a wrong or missing one gets `401`, and nothing from the body is decoded or logged. There are no CORS headers, so a web page cannot read a response even if it manages to reach the port. Headers, body and intent `id` are capped (8 KB / 1 MB / 128 bytes), logged fields are truncated, and rejection log lines are rate-limited to one per second per event. If you suspect the token leaked, replace it from Settings → Browser connection in the Mac dropdown and paste the new one into Options; the old one stops working immediately.
 
 ## File map
 

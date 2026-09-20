@@ -412,6 +412,7 @@ function loadPage(files, { config = {}, tabUrl = "" } = {}) {
     chrome,
     console: makeConsole(handle),
     crypto: { randomUUID },
+    URL,
     document: makeDom(handle),
     Date: makeFakeDate(handle.clock),
   });

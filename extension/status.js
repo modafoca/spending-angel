@@ -18,18 +18,18 @@
 function saConnectionText({ bridgeOk, bridgeAt, bridgeWhy } = {}, fmtTime) {
   const when = bridgeAt ? fmtTime(bridgeAt) : "";
   if (bridgeOk === null || bridgeOk === undefined) {
-    return { text: "Not tried yet", tone: "neutral", needsPairing: false };
+    return { text: "Connection not checked yet", tone: "neutral", needsPairing: false };
   }
   if (bridgeOk) {
-    return { text: `Connected ✓  ${when}`, tone: "ok", needsPairing: false };
+    return { text: `Last connected · ${when}`, tone: "ok", needsPairing: false };
   }
   if (bridgeWhy === "unpaired") {
-    return { text: "Not paired ✕ — paste the app's token", tone: "bad", needsPairing: true };
+    return { text: "Connect to the Mac app", tone: "bad", needsPairing: true };
   }
   if (bridgeWhy === "unauthorized") {
-    return { text: "Token rejected ✕ — re-pair", tone: "bad", needsPairing: true };
+    return { text: "Reconnect to the Mac app", tone: "bad", needsPairing: true };
   }
-  return { text: `App not reachable ✕  ${when}`, tone: "bad", needsPairing: false };
+  return { text: `App not reached · ${when}`, tone: "bad", needsPairing: false };
 }
 
 // Display names for the app's character ids. Anything new falls through to a
@@ -46,36 +46,35 @@ function saCharacterName(id) {
 // The strings are pinned by tests — change them there first.
 function saLastResultText(lastResult, fmtTime) {
   if (!lastResult || typeof lastResult !== "object") {
-    return { text: "No request sent yet", tone: "neutral" };
+    return { text: "No catch yet.", tone: "neutral" };
   }
   const r = lastResult;
   if (r.result === "shown") {
     const name = saCharacterName(r.character);
-    const who = name ? ` — ${name}` : "";
-    return { text: `Character shown${who} · ${fmtTime(r.at)}`, tone: "ok" };
+    return { text: `${name || "Your guardian"} appeared · ${fmtTime(r.at)}`, tone: "ok" };
   }
   if (r.result === "skipped") {
     if (r.reason === "off") {
-      return { text: "Not shown — the app is switched off (turn it on in the menu bar)", tone: "bad" };
+      return { text: "Your guardian is off. Turn it on in the Mac menu bar.", tone: "bad" };
     }
     if (r.reason === "snoozed") {
       const until = typeof r.snooze_until === "string" ? Date.parse(r.snooze_until) : NaN;
       const text = Number.isFinite(until)
-        ? `Not shown — snoozed until ${fmtTime(until)} (Wake up in the menu bar)`
-        : "Not shown — snoozed (Wake up in the menu bar)";
+        ? `Snoozed until ${fmtTime(until)} · Wake up in the Mac menu bar.`
+        : "Snoozed · Wake up in the Mac menu bar.";
       return { text, tone: "bad" };
     }
     if (r.reason === "busy") {
-      return { text: "Not shown — a character was already on screen", tone: "neutral" };
+      return { text: "Your guardian was already on screen.", tone: "neutral" };
     }
     if (r.reason === "throttled") {
       const wait = typeof r.retry_in_s === "number" ? ` (wait ${r.retry_in_s} s)` : "";
-      return { text: `Not shown — too soon after the last catch${wait}`, tone: "neutral" };
+      return { text: `Taking a breather after the last catch${wait}`, tone: "neutral" };
     }
   }
   // "unknown" (an app older than the body contract), or a result/reason this
   // sensor doesn't know yet — either way the honest line is the same.
-  return { text: "App answered, but didn't say what it did — update the app", tone: "neutral" };
+  return { text: "Connected to an older app. Update it for catch details.", tone: "neutral" };
 }
 
 // Version handshake. Only major.minor matters (patch releases never change
@@ -92,14 +91,13 @@ function saVersionHint(sensorVersion, appVersion) {
   if (!s || !a) return null;
   const cmp = s[0] !== a[0] ? s[0] - a[0] : s[1] - a[1];
   if (cmp === 0) return null;
-  const pair = `Sensor v${sensorVersion} · App v${appVersion}`;
+  const pair = `Browser v${sensorVersion} · App v${appVersion}`;
   return cmp > 0
     ? `${pair} — update the app`
     : `${pair} — reload the extension at chrome://extensions`;
 }
 
-// The "Simulate intent" payload, shared by the popup and the Options page so
-// both send exactly the five wire keys the app's validate() knows about.
+// The Test connection action sends the same five keys as a real detection.
 function saSimulatedIntent(now = Date.now()) {
   return {
     id: crypto.randomUUID(),

@@ -1,8 +1,8 @@
-// Spending Angel — sensor debug + quick-control popup.
+// Spending Angel — everyday site controls. Diagnostics live in Settings.
 //
 // The "This site" section is the everyday control: watch / stop-watching (in
 // "listed" mode) or pause / resume (in "everywhere" mode) for the current tab.
-// Full list management lives in the options page. Everything below it is debug.
+// Full list management, connection setup, and diagnostics live in Settings.
 // The "App connection" wording comes from status.js, shared with Options, so
 // both surfaces say the same thing about the app.
 
@@ -10,10 +10,6 @@ const $ = (id) => document.getElementById(id);
 const fmtTime = (ms) => new Date(ms).toLocaleTimeString();
 
 // ---- Debug panels (M-F1) ----------------------------------------------------
-
-function renderIntent(intent) {
-  $("last-intent").textContent = intent ? JSON.stringify(intent, null, 2) : "none yet";
-}
 
 // Tone → class on a .status line ("neutral" is the bare class).
 function statusClass(tone) {
@@ -40,6 +36,7 @@ function renderLastResult(lastResult) {
   const r = saLastResultText(lastResult, fmtTime);
   el.textContent = r.text;
   el.className = statusClass(r.tone);
+  el.hidden = !lastResult;
 }
 
 // Version handshake: only speaks up when sensor and app disagree on major.minor.
@@ -49,14 +46,6 @@ function renderVersionHint(appVersion) {
   el.textContent = hint || "";
   el.className = "hint bad";
   el.hidden = hint === null;
-}
-
-function renderEvents(logs) {
-  if (!logs || !logs.length) { $("events").textContent = "none yet"; return; }
-  $("events").textContent = logs.slice(-8).map((l) => {
-    const t = l.ts ? l.ts.slice(11, 19) : "";
-    return `${t} ${l.level === "error" ? "✕" : "·"} ${l.event} ${l.msg}`;
-  }).join("\n");
 }
 
 // ---- This-site quick control (M-F2) ----------------------------------------
@@ -88,15 +77,15 @@ async function renderSite() {
 
   if (saMode === "everywhere") {
     const paused = saHostInList(currentHost, saBlocklist);
-    $("site-state").textContent = paused ? "Paused here." : "Watching everywhere.";
-    btn.textContent = paused ? "Resume here" : "Pause on this site";
+    $("site-state").textContent = paused ? "Paused here." : "Watching this site.";
+    btn.textContent = paused ? "Resume here" : "Pause here";
     btn.dataset.act = paused ? "resume" : "pause";
   } else {
     const listed = saHostInList(currentHost, saAllowlist);
     const active = listed && granted;
     $("site-state").textContent = active ? "Watching this site."
-      : listed ? "In your list — needs permission." : "Not watched.";
-    btn.textContent = active ? "Stop watching" : "Watch this site";
+      : listed ? "Allow access to watch this site." : "Not watching this site.";
+    btn.textContent = active ? "Pause here" : "Watch this site";
     btn.dataset.act = active ? "unwatch" : "watch";
   }
 }
@@ -129,37 +118,29 @@ async function onSiteAction() {
 
 async function loadDebug() {
   const s = await chrome.storage.local.get({
-    lastIntent: null, bridgeOk: null, bridgeAt: null, bridgeWhy: null,
-    lastResult: null, appVersion: null, saLogs: [],
+    saBridgeToken: "", bridgeOk: null, bridgeAt: null, bridgeWhy: null,
+    lastResult: null, appVersion: null,
   });
-  renderIntent(s.lastIntent);
+  const needsSetup = !saNormalizeBridgeToken(s.saBridgeToken) || s.bridgeOk === null || s.bridgeWhy === "unauthorized";
+  $("setup-card").hidden = !needsSetup;
+  $("site-card").hidden = needsSetup;
+  $("connection-card").hidden = needsSetup;
   renderBridge(s.bridgeOk, s.bridgeAt, s.bridgeWhy);
   renderLastResult(s.lastResult);
   renderVersionHint(s.appVersion);
-  renderEvents(s.saLogs);
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  await Promise.all([renderSite(), loadDebug()]);
-
-  $("site-action").addEventListener("click", onSiteAction);
-  $("open-options").addEventListener("click", (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); });
-  $("open-options-pair").addEventListener("click", (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); });
-
-  $("simulate").addEventListener("click", async () => {
-    const payload = saSimulatedIntent(Date.now());
-    console.log("[SA sensor]", payload);
-    await chrome.storage.local.set({ lastIntent: payload });
-    renderIntent(payload);
-    chrome.runtime.sendMessage(payload).catch(() => {}); // forward to the app via the SW
-  });
-
+  // Wire controls before reads so Settings remains reachable if storage fails.
+  for (const id of ["open-options", "open-settings", "open-options-pair", "setup-connect"]) {
+    $(id).addEventListener("click", () => { chrome.runtime.openOptionsPage(); });
+  }
+  $("site-action").addEventListener("click", () => { onSiteAction().catch(() => {}); });
+  await Promise.all([renderSite(), loadDebug()]).catch(() => {});
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
-    if (changes.lastIntent) renderIntent(changes.lastIntent.newValue);
-    if (changes.saLogs) renderEvents(changes.saLogs.newValue);
-    if (changes.bridgeOk || changes.bridgeAt || changes.bridgeWhy
-        || changes.lastResult || changes.appVersion) loadDebug();
-    if (changes.saMode || changes.saAllowlist || changes.saBlocklist) renderSite();
+    if (changes.bridgeOk || changes.bridgeAt || changes.bridgeWhy || changes.saBridgeToken
+        || changes.lastResult || changes.appVersion) loadDebug().catch(() => {});
+    if (changes.saMode || changes.saAllowlist || changes.saBlocklist) renderSite().catch(() => {});
   });
 });

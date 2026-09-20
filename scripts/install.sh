@@ -91,8 +91,8 @@ for _ in $(seq 1 25); do
     echo "  app:    $DEST"
     if [ "$LOGIN_ITEM" = 1 ]; then echo "  login:  $PLIST"; else echo "  login:  not registered (--no-login-item)"; fi
     echo "  log:    $LOG"
-    echo "  next:   in Chrome, open the extension's Options → App card; it reads Connected after the next"
-    echo "          intent (Simulate intent works). Updated the extension too? Reload it at chrome://extensions."
+    echo "  next:   in Chrome, open the extension's Settings; it shows the last connection after the next"
+    echo "          catch (Test connection works). Updated the extension too? Reload it at chrome://extensions."
     exit 0
   fi
   sleep 0.2

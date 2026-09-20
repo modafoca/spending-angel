@@ -27,7 +27,7 @@ if [ -n "$(git diff --name-only "$BEFORE" "$AFTER" -- extension/)" ]; then
   echo
   echo "=============================================================================="
   echo "  THE EXTENSION CHANGED — RELOAD IT:"
-  echo "  chrome://extensions → \"Spending Angel — Sensor\" → the reload (↻) button."
+  echo "  chrome://extensions → \"Spending Angel\" → the reload (↻) button."
   echo "  Until then the sensor runs the old code and its version hint stays stale."
   echo "=============================================================================="
 fi
