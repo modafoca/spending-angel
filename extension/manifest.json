@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Spending Angel",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "A little backup before you buy. Choose which sites can call on your Spending Angel Mac app.",
   "icons": {
     "16": "icons/icon16.png",

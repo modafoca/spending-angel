@@ -51,9 +51,9 @@ up — the install script kills it.
 
 The everyday panel keeps the goal, four available characters, **Surprise me**, and a compact current-month catch message. **Turn off / Turn on** and **Snooze 1h / Wake up** share a two-column row. **Try character** plays a catch regardless of on-duty state and counts it only when admitted.
 
-The gear opens a separate Settings view with Back navigation. **Browser connection** masks the code by default and offers **Show / Hide**, **Copy code**, and **Replace connection code…** (with confirmation before disconnecting the browser). Version information and Quit live here too. No connection code or empty character slots occupy the everyday panel.
+The gear opens a separate Settings view with Back navigation. **Browser connection** masks the code by default and offers **Show / Hide**, **Copy code**, and **Replace connection code…** (with confirmation before disconnecting the browser). Version information and Quit live here too. The connection code stays out of the everyday panel, which includes a second row of four coming-soon guardian slots. Settings and the everyday controls share one top-aligned popup footprint, so switching pages does not shrink and recenter the window.
 
-The dropdown uses readable system text, a flat navy/mint palette, and small pixel accents. Character artwork and overlay behavior are unchanged.
+The dropdown uses Silkscreen, the original navy/cyan palette, and pixel frames, with smooth rounded corners on guardian portraits. Character artwork and overlay behavior are unchanged.
 
 ## The bridge
 

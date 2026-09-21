@@ -14,10 +14,10 @@ struct DropdownView: View {
     private let pxCorner = PixelFrame(step: 2, steps: 3)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if showingSettings {
-                settings
-            } else {
+        // Keep both pages in the layout so navigation never resizes/recenters
+        // the MenuBarExtra window. Only the visible page can receive input.
+        ZStack(alignment: .topLeading) {
+            VStack(alignment: .leading, spacing: 14) {
                 header
                 goalField
                 picker
@@ -25,6 +25,16 @@ struct DropdownView: View {
                 stat
                 controls
             }
+            .opacity(showingSettings ? 0 : 1)
+            .disabled(showingSettings)
+            .allowsHitTesting(!showingSettings)
+            .accessibilityHidden(showingSettings)
+
+            settings
+                .opacity(showingSettings ? 1 : 0)
+                .disabled(!showingSettings)
+                .allowsHitTesting(showingSettings)
+                .accessibilityHidden(!showingSettings)
         }
         .padding(16)
         .frame(width: 320)
