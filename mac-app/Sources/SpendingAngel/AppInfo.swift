@@ -9,5 +9,5 @@ import Foundation
 /// the same commit. `AppInfoTests` fails when they drift, because the handshake
 /// compares major.minor across the two halves.
 enum AppInfo {
-    static let version = "0.6.1"
+    static let version = "0.6.2"
 }
