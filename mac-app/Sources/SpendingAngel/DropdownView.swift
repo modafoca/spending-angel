@@ -14,7 +14,7 @@ struct DropdownView: View {
     private let pxCorner = PixelFrame(step: 2, steps: 3)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             if showingSettings {
                 settings
             } else {
@@ -26,9 +26,10 @@ struct DropdownView: View {
                 controls
             }
         }
-        .padding(18)
-        .frame(width: 332)
+        .padding(16)
+        .frame(width: 320)
         .background(Theme.pxBG)
+        .overlay(frameBorder)
         .foregroundColor(Theme.pxInk)
         .preferredColorScheme(.dark)
         .confirmationDialog("Replace your connection code?", isPresented: $confirmingNewCode) {
@@ -43,6 +44,15 @@ struct DropdownView: View {
         }
     }
 
+    private var frameBorder: some View {
+        ZStack {
+            PixelFrame(step: 3, steps: 3).stroke(Theme.pxLine, lineWidth: 2)
+            PixelFrame(step: 3, steps: 3).stroke(Theme.pxAccent.opacity(0.22), lineWidth: 1).padding(3)
+        }
+        .padding(5)
+        .allowsHitTesting(false)
+    }
+
     private var header: some View {
         HStack(spacing: 10) {
             Image(nsImage: AppIcons.menuBar)
@@ -51,7 +61,7 @@ struct DropdownView: View {
                 .foregroundColor(Theme.pxAccent)
             VStack(alignment: .leading, spacing: 5) {
                 Text("Spending Angel").font(.pixel(11, bold: true))
-                Text(store.statusText).font(.system(size: 12))
+                Text(store.statusText).font(.pixel(9))
                     .foregroundColor(store.onDuty ? Theme.pxAccent : Theme.pxDim)
             }
             Spacer()
@@ -73,9 +83,9 @@ struct DropdownView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("SAVING FOR").font(.pixel(9)).foregroundColor(Theme.pxDim)
             TextField("e.g. Tokyo trip", text: $store.goal)
-                .font(.system(size: 17, weight: .medium))
+                .font(.pixel(14))
                 .textFieldStyle(.plain)
-                .padding(12)
+                .padding(.horizontal, 10).padding(.vertical, 9)
                 .background(pxCorner.fill(Theme.pxPanel))
                 .overlay(pxCorner.stroke(Theme.pxLine, lineWidth: 1))
                 .accessibilityLabel("Saving for")
@@ -94,12 +104,27 @@ struct DropdownView: View {
                         .accessibilityValue(store.activeCharacter == character ? "Selected" : "")
                 }
             }
+            HStack(spacing: 8) {
+                ForEach(0..<4, id: \.self) { _ in
+                    Text("?").font(.pixel(24))
+                        .foregroundColor(Theme.pxDim.opacity(0.65))
+                        .frame(width: 66, height: 66)
+                        .background(Theme.pxPanel.opacity(0.5))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .overlay(RoundedRectangle(cornerRadius: 4)
+                            .stroke(Theme.pxLine.opacity(0.65), lineWidth: 1))
+                        .accessibilityHidden(true)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Four more guardians coming soon")
+            .help("More guardians coming soon")
         }
     }
 
     private var shuffleRow: some View {
         HStack {
-            Text("Surprise me").font(.system(size: 13))
+            Text("Surprise me").font(.pixel(9))
             Spacer()
             Toggle("Surprise me", isOn: $store.shuffleMode)
                 .toggleStyle(PixelToggleStyle()).labelsHidden()
@@ -114,14 +139,16 @@ struct DropdownView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(count == 0 ? "Your next good decision starts here."
                      : store.activeCharacter.brag(count: count, goal: store.goal))
-                    .font(.system(size: 13))
+                    .font(.pixel(11))
                     .fixedSize(horizontal: false, vertical: true)
                 Text(count == 0 ? "No catches yet this month." : "\(count) \(count == 1 ? "catch" : "catches") this month")
-                    .font(.system(size: 11)).foregroundColor(Theme.pxDim)
+                    .font(.pixel(9)).foregroundColor(Theme.pxDim)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 4)
+        .padding(11)
+        .background(pxCorner.fill(Theme.pxPanel))
+        .overlay(pxCorner.stroke(Theme.pxLine, lineWidth: 1))
     }
 
     private var controls: some View {
@@ -140,7 +167,7 @@ struct DropdownView: View {
             }
             Button(action: onTest) {
                 Label("Try character", systemImage: "play.fill")
-                    .font(.system(size: 12))
+                    .font(.pixel(9))
                     .frame(maxWidth: .infinity, minHeight: 30)
                     .contentShape(Rectangle())
             }
@@ -150,7 +177,7 @@ struct DropdownView: View {
     }
 
     private func controlLabel(_ title: String, filled: Bool) -> some View {
-        Text(title).font(.system(size: 13, weight: .semibold))
+        Text(title).font(.pixel(11, bold: true))
             .frame(maxWidth: .infinity, minHeight: 42)
             .foregroundColor(filled ? Theme.pxBG : Theme.pxInk)
             .background(pxCorner.fill(filled ? Theme.pxAccent : Theme.pxPanel))
@@ -159,22 +186,22 @@ struct DropdownView: View {
     }
 
     private var settings: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Button {
                     showingSettings = false
                     showingCode = false
                 } label: {
-                    Label("Back", systemImage: "chevron.left").font(.system(size: 13))
+                    Label("Back", systemImage: "chevron.left").font(.pixel(10))
                         .frame(minHeight: 32).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).foregroundColor(Theme.pxAccent)
                 Spacer()
-                Text("Settings").font(.system(size: 15, weight: .semibold))
+                Text("Settings").font(.pixel(13, bold: true))
             }
             Divider().overlay(Theme.pxLine)
             VStack(alignment: .leading, spacing: 10) {
-                Text("Browser connection").font(.system(size: 16, weight: .semibold))
+                Text("Browser connection").font(.pixel(11, bold: true))
                 Text("Copy this code into Spending Angel’s Settings in Chrome. You only need to do this once.")
                     .font(.system(size: 13)).foregroundColor(Theme.pxDim)
                     .fixedSize(horizontal: false, vertical: true)
@@ -185,7 +212,7 @@ struct DropdownView: View {
                         .textSelection(.enabled)
                     Spacer(minLength: 8)
                     Button(showingCode ? "Hide" : "Show") { showingCode.toggle() }
-                        .buttonStyle(.plain).font(.system(size: 12))
+                        .buttonStyle(.plain).font(.pixel(9))
                         .foregroundColor(Theme.pxAccent)
                         .accessibilityLabel(showingCode ? "Hide connection code" : "Show connection code")
                 }
@@ -193,15 +220,15 @@ struct DropdownView: View {
                 Button { copyToken() } label: { controlLabel(copied ? "Copied" : "Copy code", filled: true) }
                     .buttonStyle(.plain)
                 Button("Replace connection code…") { confirmingNewCode = true }
-                    .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(Theme.pxDim)
+                    .buttonStyle(.plain).font(.pixel(9)).foregroundColor(Theme.pxDim)
                     .padding(.top, 2)
             }
             Divider().overlay(Theme.pxLine)
             HStack {
-                Text("Version \(AppInfo.version)").font(.system(size: 11)).foregroundColor(Theme.pxDim)
+                Text("Version \(AppInfo.version)").font(.pixel(9)).foregroundColor(Theme.pxDim)
                 Spacer()
                 Button("Quit Spending Angel") { NSApplication.shared.terminate(nil) }
-                    .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(Theme.pxDim)
+                    .buttonStyle(.plain).font(.pixel(9)).foregroundColor(Theme.pxDim)
             }
         }
     }
@@ -224,11 +251,12 @@ struct DropdownView: View {
                 Text(character.placeholderEmoji).font(.system(size: 26))
             }
         }
-        .frame(width: 68, height: 68)
+        .frame(width: 66, height: 66)
         .background(Theme.pxPanel)
-        .opacity(selected ? 1 : 0.55)
-        .clipShape(RoundedRectangle(cornerRadius: 5))
-        .overlay(RoundedRectangle(cornerRadius: 5)
-            .stroke(selected ? Theme.pxAccent : Theme.pxLine, lineWidth: selected ? 2 : 1))
+        .opacity(selected ? 1 : 0.4)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 4)
+            .stroke(selected ? Theme.pxAccent : Theme.pxLine, lineWidth: selected ? 2.5 : 1))
+        .shadow(color: selected ? Theme.pxAccent.opacity(0.35) : .clear, radius: 6)
     }
 }

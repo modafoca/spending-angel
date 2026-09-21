@@ -1,14 +1,15 @@
-body { width:336px; }
-.header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; }
-.site-card { padding:8px 20px 22px; }
-.site-heading { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
-#site-host { font-size:24px; letter-spacing:-.6px; overflow-wrap:anywhere; }
-#site-state { margin:5px 0 17px; }
-#site-action { width:100%; }
-.connection { margin:0 20px; padding:16px 0; border-top:1px solid var(--line); }
-#last-result { margin-top:5px; font-size:12px; }
-.footer { display:flex; align-items:center; justify-content:space-between; padding:8px 20px 16px; color:var(--dim); font-size:11px; }
-.setup { padding:10px 24px 22px; }
-.setup h2 { font-size:25px; letter-spacing:-.5px; margin:10px 0; }
-.setup p { color:var(--dim); margin-bottom:20px; }
-.setup .button { width:100%; }
+body { width: 320px; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 16px; border-bottom: 1px solid var(--line); }
+.header .brand { font-size: 11px; }
+.site-card { padding: 16px; }
+.site-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+#site-host { font: 600 14px/1.5 var(--sans); overflow-wrap: anywhere; }
+#site-state { margin: 5px 0 14px; }
+#site-action { width: 100%; }
+.connection { margin: 0 16px; padding: 12px 0; border-top: 1px solid var(--line); }
+#last-result { margin-top: 5px; font-size: 11px; }
+.footer { display: flex; align-items: center; justify-content: space-between; padding: 4px 16px 12px; color: var(--dim); font-size: 10px; }
+.setup { padding: 16px; }
+.setup h2 { font-size: 15px; line-height: 1.5; margin: 10px 0; }
+.setup p { color: var(--dim); font-size: 12px; margin-bottom: 16px; }
+.setup .button { width: 100%; }
