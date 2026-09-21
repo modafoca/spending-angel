@@ -2,58 +2,39 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Spending Angel — Sensor</title>
+  <title>Spending Angel</title>
   <link rel="stylesheet" href="pixel.css" />
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
   <main id="popup-root">
     <header class="header">
-      <div class="logo" role="img" aria-label="Spending Angel"></div>
-      <div>
-        <h1>Sensor</h1>
-        <p class="sub">Eyes for the Spending Angel app</p>
-      </div>
+      <div class="brand"><span class="logo" aria-hidden="true"></span><h1>Spending Angel</h1></div>
+      <button id="open-settings" class="icon-button" aria-label="Settings" title="Settings">⚙</button>
     </header>
-
-    <section class="panel">
-      <h2 class="panel-title">This site</h2>
-      <p id="site-host" class="site-host">—</p>
-      <p id="site-state" class="hint">Checking…</p>
-      <button id="site-action" class="ghost-btn" hidden></button>
-      <p class="hint"><a href="#" id="open-options">Manage all sites →</a></p>
+    <section id="setup-card" class="setup" hidden>
+      <img src="art/angel-portrait.png" width="76" height="76" alt="" class="portrait" />
+      <h2>A little backup<br>before you buy.</h2>
+      <p>Connect to the Mac app to let your guardian step in.</p>
+      <button id="setup-connect" class="button primary">Connect to the Mac app</button>
     </section>
-
-    <section class="panel">
-      <h2 class="panel-title">Last detected intent</h2>
-      <pre id="last-intent" class="intent">none yet</pre>
+    <section id="site-card" class="site-card">
+      <div class="site-heading"><img src="art/angel-portrait.png" width="52" height="52" alt="" class="portrait" /><span class="eyebrow">Here to help</span></div>
+      <h2 id="site-host">This site</h2>
+      <p id="site-state" class="secondary">Checking…</p>
+      <button id="site-action" class="button primary" hidden></button>
     </section>
-
-    <section class="panel">
-      <button id="simulate" class="ghost-btn">Simulate intent</button>
-      <p class="hint">Fires a fake <code>checkout_intent</code> through the app so you can test the whole pipeline without a real shop.</p>
-    </section>
-
-    <section class="panel">
-      <h2 class="panel-title">App connection</h2>
-      <p id="bridge-status" class="status">—</p>
-      <p id="last-result" class="status">—</p>
+    <section id="connection-card" class="connection" aria-live="polite">
+      <p id="bridge-status" class="status">Checking the connection…</p>
+      <p id="last-result" class="secondary" hidden></p>
       <p id="version-hint" class="hint bad" hidden></p>
-      <p id="bridge-hint" class="hint" hidden><a href="#" id="open-options-pair">Pair in Options →</a></p>
+      <p id="bridge-hint" class="hint" hidden><button id="open-options-pair" class="text-button">Reconnect in Settings →</button></p>
     </section>
-
-    <section class="panel">
-      <h2 class="panel-title">Recent events</h2>
-      <pre id="events" class="intent">none yet</pre>
-    </section>
-
-    <footer class="footer"><span class="version">sensor v0.6 · controls live in the macOS app</span></footer>
+    <footer class="footer"><button id="open-options" class="text-button">Manage sites →</button><span>Just on your Mac.</span></footer>
   </main>
-
   <script src="domains.js"></script>
   <script src="sites.js"></script>
   <script src="status.js"></script>
-  <script src="detect.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

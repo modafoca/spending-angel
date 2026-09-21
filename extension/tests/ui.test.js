@@ -10,7 +10,7 @@
 // Pairing wording (review 2026-09, item 4): "Paired" is a claim the app has to
 // earn — only bridgeOk === true unlocks it. A fresh save reads "Token saved —
 // waiting…", a 401 reads "Token rejected — …", an unreachable app reads
-// "Token saved — the app isn't answering yet…". The status line re-renders
+// "Code saved — the app isn't answering yet…". The status line re-renders
 // live from storage and never touches the input's value; only a successful
 // save clears the field. The TOKEN_STATE_* consts are script-scoped in
 // options.js (not on h.ctx), so the expected strings are hardcoded here.
@@ -29,12 +29,12 @@ const TOKEN = "0123456789abcdef".repeat(4);
 const TAIL = TOKEN.slice(-4);
 const BRIDGE_KEYS = ["saBridgeToken", "bridgeOk", "bridgeAt", "bridgeWhy"];
 
-const STATE_NONE = "Not paired — the app will not answer until you paste the token.";
-const STATE_SAVED = `Token saved — waiting for the app to confirm (…${TAIL}). Try "Simulate intent" in the popup.`;
-const STATE_UNREACHABLE = `Token saved — the app isn't answering yet (…${TAIL}). Is Spending Angel running?`;
-const STATE_PAIRED = `Paired — token ends in …${TAIL}`;
-const STATE_REJECTED = `Token rejected — copy it again from PAIR SENSOR (…${TAIL})`;
-const JUNK_MSG = "hmm, that doesn't look like a token (64 hex characters)";
+const STATE_NONE = "Copy a connection code from the Mac app to get started.";
+const STATE_SAVED = `Code saved — waiting for the app to confirm (…${TAIL}). Choose “Test connection” above.`;
+const STATE_UNREACHABLE = `Code saved — the app isn't answering yet (…${TAIL}). Is Spending Angel running?`;
+const STATE_PAIRED = `Connected — code ends in …${TAIL}`;
+const STATE_REJECTED = `Code not recognised — copy it again from the Mac app’s Settings (…${TAIL})`;
+const JUNK_MSG = "That code looks incomplete. Copy the full code from the Mac app.";
 
 const tokenState = (h) => h.el("token-state").textContent;
 
@@ -45,7 +45,7 @@ describe("options.js pairing card", () => {
     const h = loadOptions({ config: {} });
     await h.ctx.renderToken();
     assert.equal(tokenState(h), STATE_NONE);
-    assert.equal(h.el("token-input").placeholder, "paste the 64-character token");
+    assert.equal(h.el("token-input").placeholder, "Paste your connection code");
     assert.equal(h.el("token-input").value, "");
   });
 
@@ -55,7 +55,7 @@ describe("options.js pairing card", () => {
     const h = loadOptions({ config: { saBridgeToken: TOKEN } });
     await h.ctx.renderToken();
     assert.equal(tokenState(h), STATE_SAVED);
-    assert.match(tokenState(h), new RegExp(`^Token saved — waiting for the app to confirm \\(…${TAIL}\\)`));
+    assert.match(tokenState(h), new RegExp(`^Code saved — waiting for the app to confirm \\(…${TAIL}\\)`));
     assert.equal(h.el("token-input").placeholder, `••••…${TAIL}`);
     assert.equal(h.el("token-input").value, "", "the field never carries the real token");
     assert.ok(!h.el("token-input").placeholder.includes(TOKEN.slice(0, 8)), "no leading bytes leak");
@@ -64,7 +64,7 @@ describe("options.js pairing card", () => {
   test("renderToken treats a corrupted stored token as not paired", async () => {
     const h = loadOptions({ config: { saBridgeToken: "abc" } });
     await h.ctx.renderToken();
-    assert.match(h.el("token-state").textContent, /^Not paired/);
+    assert.match(h.el("token-state").textContent, /^Copy a connection code/);
   });
 
   test("saveToken with a valid token writes token + bridge reset in ONE set", async () => {
@@ -156,7 +156,7 @@ describe("options.js pairing card", () => {
     const untried = loadOptions({ config: { saBridgeToken: TOKEN, bridgeOk: null } });
     await untried.ctx.renderToken();
     assert.equal(tokenState(untried), STATE_SAVED);
-    assert.doesNotMatch(tokenState(untried), /^Paired/);
+    assert.doesNotMatch(tokenState(untried), /^Connected/);
   });
 
   test("renderToken shows the rejected state for an unauthorized bridge", async () => {
@@ -171,7 +171,7 @@ describe("options.js pairing card", () => {
     await h.ctx.renderToken();
     assert.equal(tokenState(h), STATE_UNREACHABLE);
     // The reviewer fixture's regex: both "saved" states share the prefix.
-    assert.match(tokenState(h), /^Token saved/);
+    assert.match(tokenState(h), /^Code saved/);
   });
 
   test("tokenStateText precedence", () => {
@@ -288,11 +288,11 @@ describe("options.js pairing card", () => {
 describe("popup.js renderBridge", () => {
   const AT = 1_700_000_000_000;
 
-  test("null / undefined → Not tried yet, hint hidden", () => {
+  test("null / undefined → Connection not checked yet, hint hidden", () => {
     const h = loadPopup();
     for (const ok of [null, undefined]) {
       h.ctx.renderBridge(ok, null, null);
-      assert.equal(h.el("bridge-status").textContent, "Not tried yet");
+      assert.equal(h.el("bridge-status").textContent, "Connection not checked yet");
       assert.equal(h.el("bridge-status").className, "status");
       assert.equal(h.el("bridge-hint").hidden, true);
     }
@@ -301,7 +301,7 @@ describe("popup.js renderBridge", () => {
   test("true → Connected ✓ with time, hint hidden", () => {
     const h = loadPopup();
     h.ctx.renderBridge(true, AT, null);
-    assert.match(h.el("bridge-status").textContent, /^Connected ✓/);
+    assert.match(h.el("bridge-status").textContent, /^Last connected/);
     assert.equal(h.el("bridge-status").textContent.includes(new Date(AT).toLocaleTimeString()), true);
     assert.equal(h.el("bridge-status").className, "status ok");
     assert.equal(h.el("bridge-hint").hidden, true);
@@ -310,7 +310,7 @@ describe("popup.js renderBridge", () => {
   test("false + unpaired → Not paired ✕, hint shown", () => {
     const h = loadPopup();
     h.ctx.renderBridge(false, AT, "unpaired");
-    assert.equal(h.el("bridge-status").textContent, "Not paired ✕ — paste the app's token");
+    assert.equal(h.el("bridge-status").textContent, "Connect to the Mac app");
     assert.equal(h.el("bridge-status").className, "status bad");
     assert.equal(h.el("bridge-hint").hidden, false);
   });
@@ -318,7 +318,7 @@ describe("popup.js renderBridge", () => {
   test("false + unauthorized → Token rejected ✕, hint shown", () => {
     const h = loadPopup();
     h.ctx.renderBridge(false, AT, "unauthorized");
-    assert.equal(h.el("bridge-status").textContent, "Token rejected ✕ — re-pair");
+    assert.equal(h.el("bridge-status").textContent, "Reconnect to the Mac app");
     assert.equal(h.el("bridge-status").className, "status bad");
     assert.equal(h.el("bridge-hint").hidden, false);
   });
@@ -327,7 +327,7 @@ describe("popup.js renderBridge", () => {
     const h = loadPopup();
     for (const why of ["unreachable", null, undefined, "something-new"]) {
       h.ctx.renderBridge(false, AT, why);
-      assert.match(h.el("bridge-status").textContent, /^App not reachable ✕/);
+      assert.match(h.el("bridge-status").textContent, /^App not reached/);
       assert.equal(h.el("bridge-status").className, "status bad");
       assert.equal(h.el("bridge-hint").hidden, true, `hint hidden for why=${why}`);
     }
@@ -344,34 +344,32 @@ describe("popup.js renderBridge", () => {
   test("loadDebug reads bridgeWhy and renders the unpaired state from storage", async () => {
     const h = loadPopup({ config: { bridgeOk: false, bridgeAt: AT, bridgeWhy: "unpaired", saLogs: [] } });
     await h.ctx.loadDebug();
-    assert.match(h.el("bridge-status").textContent, /^Not paired ✕/);
+    assert.match(h.el("bridge-status").textContent, /^Connect to the Mac app/);
     assert.equal(h.el("bridge-hint").hidden, false);
-    assert.equal(h.el("last-intent").textContent, "none yet");
+    assert.equal(h.el("setup-card").hidden, false);
   });
 
-  test("loadDebug with nothing stored renders Not tried yet", async () => {
+  test("loadDebug with nothing stored renders Connection not checked yet", async () => {
     const h = loadPopup({ config: {} });
     await h.ctx.loadDebug();
-    assert.equal(h.el("bridge-status").textContent, "Not tried yet");
+    assert.equal(h.el("bridge-status").textContent, "Connection not checked yet");
   });
 
   test("storage.onChanged on bridgeWhy re-renders, and the pair link opens Options", async () => {
     const h = loadPopup({ config: { bridgeOk: true, bridgeAt: AT, bridgeWhy: null } });
     await h.domReady();
-    assert.match(h.el("bridge-status").textContent, /^Connected ✓/);
+    assert.match(h.el("bridge-status").textContent, /^Last connected/);
 
     h.setConfig({ bridgeOk: false, bridgeWhy: "unauthorized" });
     h.storageChanged({ bridgeWhy: { oldValue: null, newValue: "unauthorized" } });
     await h.tick();
     await h.tick();
-    assert.equal(h.el("bridge-status").textContent, "Token rejected ✕ — re-pair");
+    assert.equal(h.el("bridge-status").textContent, "Reconnect to the Mac app");
     assert.equal(h.el("bridge-hint").hidden, false);
 
     const click = h.el("open-options-pair").listeners.click;
     assert.ok(click && click.length === 1);
-    let prevented = false;
-    click[0]({ preventDefault() { prevented = true; } });
-    assert.equal(prevented, true);
+    click[0]();
     assert.equal(h.openedOptions, 1);
   });
 
@@ -382,7 +380,7 @@ describe("popup.js renderBridge", () => {
     h.storageChanged({ bridgeWhy: { newValue: "unpaired" } }, "sync");
     await h.tick();
     await h.tick();
-    assert.match(h.el("bridge-status").textContent, /^Connected ✓/);
+    assert.match(h.el("bridge-status").textContent, /^Last connected/);
   });
 });
 
@@ -399,34 +397,34 @@ describe("options.js App card", () => {
       bridgeOk: true, bridgeAt: AT, bridgeWhy: null, lastResult: SHOWN, appVersion: MANIFEST_VERSION,
     } });
     await h.ctx.renderApp();
-    assert.equal(h.el("app-connection").textContent, `Connected ✓  ${when}`);
+    assert.equal(h.el("app-connection").textContent, `Last connected · ${when}`);
     assert.equal(h.el("app-connection").className, "ok");
-    assert.equal(h.el("app-last-result").textContent, `Character shown — Mom · ${when}`);
+    assert.equal(h.el("app-last-result").textContent, `Mom appeared · ${when}`);
     assert.equal(h.el("app-last-result").className, "ok");
-    assert.equal(h.el("app-versions").textContent, `Sensor v${MANIFEST_VERSION} · App v${MANIFEST_VERSION}`);
+    assert.equal(h.el("app-versions").textContent, `Browser v${MANIFEST_VERSION} · App v${MANIFEST_VERSION}`);
     assert.equal(h.el("app-versions").className, "");
     assert.equal(h.el("app-version-hint").hidden, true);
     assert.equal(h.el("app-version-hint").textContent, "");
   });
 
-  test("renderApp with nothing stored reads Not tried yet / No request sent yet / version not seen", async () => {
+  test("renderApp with nothing stored reads Connection not checked yet / No catch yet. / version not seen", async () => {
     const h = loadOptions({ config: {} });
     await h.ctx.renderApp();
-    assert.equal(h.el("app-connection").textContent, "Not tried yet");
+    assert.equal(h.el("app-connection").textContent, "Connection not checked yet");
     assert.equal(h.el("app-connection").className, "");
-    assert.equal(h.el("app-last-result").textContent, "No request sent yet");
+    assert.equal(h.el("app-last-result").textContent, "No catch yet.");
     assert.equal(h.el("app-last-result").className, "");
-    assert.equal(h.el("app-versions").textContent, `Sensor v${MANIFEST_VERSION} · App version not seen yet`);
+    assert.equal(h.el("app-versions").textContent, `Browser v${MANIFEST_VERSION} · App version not seen yet`);
     assert.equal(h.el("app-version-hint").hidden, true);
   });
 
   test("renderApp shows the version hint, tone bad, when the app is older", async () => {
     const h = loadOptions({ config: { bridgeOk: true, bridgeAt: AT, appVersion: "0.1.0" } });
     await h.ctx.renderApp();
-    assert.equal(h.el("app-versions").textContent, `Sensor v${MANIFEST_VERSION} · App v0.1.0`);
+    assert.equal(h.el("app-versions").textContent, `Browser v${MANIFEST_VERSION} · App v0.1.0`);
     assert.equal(h.el("app-version-hint").hidden, false);
     assert.equal(h.el("app-version-hint").textContent,
-      `Sensor v${MANIFEST_VERSION} · App v0.1.0 — update the app`);
+      `Browser v${MANIFEST_VERSION} · App v0.1.0 — update the app`);
     assert.match(h.el("app-version-hint").className, /\bbad\b/);
   });
 
@@ -436,17 +434,17 @@ describe("options.js App card", () => {
       lastResult: { ...SHOWN, result: "skipped", reason: "off" },
     } });
     await off.ctx.renderApp();
-    assert.equal(off.el("app-connection").textContent, "Not paired ✕ — paste the app's token");
+    assert.equal(off.el("app-connection").textContent, "Connect to the Mac app");
     assert.equal(off.el("app-connection").className, "bad");
     assert.equal(off.el("app-last-result").textContent,
-      "Not shown — the app is switched off (turn it on in the menu bar)");
+      "Your guardian is off. Turn it on in the Mac menu bar.");
     assert.equal(off.el("app-last-result").className, "bad");
 
     const busy = loadOptions({ config: {
       bridgeOk: true, bridgeAt: AT, lastResult: { ...SHOWN, result: "skipped", reason: "busy" },
     } });
     await busy.ctx.renderApp();
-    assert.equal(busy.el("app-last-result").textContent, "Not shown — a character was already on screen");
+    assert.equal(busy.el("app-last-result").textContent, "Your guardian was already on screen.");
     assert.equal(busy.el("app-last-result").className, "", "neutral is no class");
   });
 
@@ -454,8 +452,8 @@ describe("options.js App card", () => {
     const h = loadOptions({ config: { saBridgeToken: TOKEN, bridgeOk: null } });
     await h.domReady();
     assert.equal(h.listeners.storageChanged.length, 1, "still one storage listener");
-    assert.equal(h.el("app-connection").textContent, "Not tried yet");
-    assert.equal(h.el("app-last-result").textContent, "No request sent yet");
+    assert.equal(h.el("app-connection").textContent, "Connection not checked yet");
+    assert.equal(h.el("app-last-result").textContent, "No catch yet.");
 
     // The worker's one write after a 200: connection + result + version.
     h.setConfig({ bridgeOk: true, bridgeAt: AT, bridgeWhy: null, lastResult: SHOWN, appVersion: MANIFEST_VERSION });
@@ -465,8 +463,8 @@ describe("options.js App card", () => {
     });
     await h.tick();
     await h.tick();
-    assert.equal(h.el("app-connection").textContent, `Connected ✓  ${when}`);
-    assert.equal(h.el("app-last-result").textContent, `Character shown — Mom · ${when}`);
+    assert.equal(h.el("app-connection").textContent, `Last connected · ${when}`);
+    assert.equal(h.el("app-last-result").textContent, `Mom appeared · ${when}`);
     assert.equal(tokenState(h), STATE_PAIRED, "the pairing line flipped in the same event");
 
     // lastResult alone (a 429 after a 200) re-renders too.
@@ -475,7 +473,7 @@ describe("options.js App card", () => {
     h.storageChanged({ lastResult: { newValue: throttled } });
     await h.tick();
     await h.tick();
-    assert.equal(h.el("app-last-result").textContent, "Not shown — too soon after the last catch (wait 5 s)");
+    assert.equal(h.el("app-last-result").textContent, "Taking a breather after the last catch (wait 5 s)");
 
     // appVersion alone shows the hint.
     h.setConfig({ appVersion: "0.1.0" });
@@ -494,7 +492,7 @@ describe("options.js App card", () => {
     assert.equal(h.el("app-last-result").textContent, "sentinel");
   });
 
-  test("Simulate from Options writes lastIntent and sends the popup's payload shape", async () => {
+  test("Test connection from Settings uses the existing five-field intent contract", async () => {
     const opts = loadOptions({ config: {} });
     await opts.domReady();
     const click = opts.el("app-simulate").listeners.click;
@@ -503,26 +501,17 @@ describe("options.js App card", () => {
     await opts.tick();
     await opts.tick();
 
-    const popup = loadPopup({ config: {} });
-    await popup.domReady();
-    popup.el("simulate").listeners.click[0]();
-    await popup.tick();
-    await popup.tick();
-
     assert.equal(opts.messages.length, 1);
-    assert.equal(popup.messages.length, 1);
     const a = opts.messages[0];
-    const b = popup.messages[0];
     assert.deepEqual(Object.keys(a), WIRE_KEYS);
-    assert.deepEqual(Object.keys(b), WIRE_KEYS);
-    for (const k of ["type", "trigger", "hostname"]) assert.equal(a[k], b[k], k);
     assert.equal(a.type, "checkout_intent");
     assert.equal(a.trigger, "simulated");
     assert.equal(a.hostname, "example-shop.test");
     assert.equal(a.ts, opts.clock.now);
-    assert.notEqual(a.id, b.id, "fresh ids");
-    assert.deepEqual(opts.store.lastIntent, a, "Options stored the intent like the popup does");
-    assert.deepEqual(popup.store.lastIntent, b);
+    assert.deepEqual(opts.store.lastIntent, a);
+    click[0]();
+    await opts.tick();
+    assert.notEqual(opts.messages[1].id, a.id, "each test has a fresh trace id");
   });
 });
 
@@ -538,18 +527,18 @@ describe("popup.js last request + version hint", () => {
       bridgeOk: true, bridgeAt: AT, bridgeWhy: null, lastResult: SHOWN, appVersion: MANIFEST_VERSION, saLogs: [],
     } });
     await h.ctx.loadDebug();
-    assert.equal(h.el("bridge-status").textContent, `Connected ✓  ${when}`);
+    assert.equal(h.el("bridge-status").textContent, `Last connected · ${when}`);
     assert.equal(h.el("bridge-status").className, "status ok");
-    assert.equal(h.el("last-result").textContent, `Character shown — Papi · ${when}`);
+    assert.equal(h.el("last-result").textContent, `Papi appeared · ${when}`);
     assert.equal(h.el("last-result").className, "status ok");
     assert.equal(h.el("version-hint").hidden, true);
     assert.equal(h.el("bridge-hint").hidden, true);
   });
 
-  test("loadDebug with nothing stored: No request sent yet, neutral, no hint", async () => {
+  test("loadDebug with nothing stored: No catch yet., neutral, no hint", async () => {
     const h = loadPopup({ config: {} });
     await h.ctx.loadDebug();
-    assert.equal(h.el("last-result").textContent, "No request sent yet");
+    assert.equal(h.el("last-result").textContent, "No catch yet.");
     assert.equal(h.el("last-result").className, "status");
     assert.equal(h.el("version-hint").hidden, true);
   });
@@ -562,23 +551,23 @@ describe("popup.js last request + version hint", () => {
     } });
     await h.ctx.loadDebug();
     const until = new Date(Date.parse("2026-09-15T22:43:54Z")).toLocaleTimeString();
-    assert.equal(h.el("last-result").textContent, `Not shown — snoozed until ${until} (Wake up in the menu bar)`);
+    assert.equal(h.el("last-result").textContent, `Snoozed until ${until} · Wake up in the Mac menu bar.`);
     assert.equal(h.el("last-result").className, "status bad");
     assert.equal(h.el("version-hint").hidden, false);
     assert.equal(h.el("version-hint").textContent,
-      `Sensor v${MANIFEST_VERSION} · App v99.0.0 — reload the extension at chrome://extensions`);
+      `Browser v${MANIFEST_VERSION} · App v99.0.0 — reload the extension at chrome://extensions`);
   });
 
   test("storage.onChanged on lastResult / appVersion re-renders the popup live", async () => {
     const h = loadPopup({ config: { bridgeOk: true, bridgeAt: AT } });
     await h.domReady();
-    assert.equal(h.el("last-result").textContent, "No request sent yet");
+    assert.equal(h.el("last-result").textContent, "No catch yet.");
 
     h.setConfig({ lastResult: SHOWN });
     h.storageChanged({ lastResult: { newValue: SHOWN } });
     await h.tick();
     await h.tick();
-    assert.equal(h.el("last-result").textContent, `Character shown — Papi · ${when}`);
+    assert.equal(h.el("last-result").textContent, `Papi appeared · ${when}`);
 
     h.setConfig({ appVersion: "0.1.0" });
     h.storageChanged({ appVersion: { newValue: "0.1.0" } });

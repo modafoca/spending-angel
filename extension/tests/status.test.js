@@ -19,38 +19,38 @@ const fmt = (ms) => `T${ms}`;
 // ---- saConnectionText -------------------------------------------------------
 
 describe("saConnectionText", () => {
-  test("null / undefined ok → Not tried yet, neutral, no pairing", () => {
+  test("null / undefined ok → Connection not checked yet, neutral, no pairing", () => {
     for (const bridgeOk of [null, undefined]) {
       assert.deepEqual(saConnectionText({ bridgeOk, bridgeAt: AT, bridgeWhy: null }, fmt),
-        { text: "Not tried yet", tone: "neutral", needsPairing: false });
+        { text: "Connection not checked yet", tone: "neutral", needsPairing: false });
     }
-    assert.deepEqual(saConnectionText({}, fmt), { text: "Not tried yet", tone: "neutral", needsPairing: false });
-    assert.deepEqual(saConnectionText(undefined, fmt), { text: "Not tried yet", tone: "neutral", needsPairing: false });
+    assert.deepEqual(saConnectionText({}, fmt), { text: "Connection not checked yet", tone: "neutral", needsPairing: false });
+    assert.deepEqual(saConnectionText(undefined, fmt), { text: "Connection not checked yet", tone: "neutral", needsPairing: false });
   });
 
   test("ok → Connected ✓ with the formatted time", () => {
     assert.deepEqual(saConnectionText({ bridgeOk: true, bridgeAt: AT, bridgeWhy: null }, fmt),
-      { text: `Connected ✓  T${AT}`, tone: "ok", needsPairing: false });
+      { text: `Last connected · T${AT}`, tone: "ok", needsPairing: false });
   });
 
   test("ok without a time still reads Connected (two spaces, nothing after)", () => {
-    assert.equal(saConnectionText({ bridgeOk: true, bridgeAt: null }, fmt).text, "Connected ✓  ");
+    assert.equal(saConnectionText({ bridgeOk: true, bridgeAt: null }, fmt).text, "Last connected · ");
   });
 
   test("unpaired → paste the token, needs pairing", () => {
     assert.deepEqual(saConnectionText({ bridgeOk: false, bridgeAt: AT, bridgeWhy: "unpaired" }, fmt),
-      { text: "Not paired ✕ — paste the app's token", tone: "bad", needsPairing: true });
+      { text: "Connect to the Mac app", tone: "bad", needsPairing: true });
   });
 
   test("unauthorized → re-pair, needs pairing", () => {
     assert.deepEqual(saConnectionText({ bridgeOk: false, bridgeAt: AT, bridgeWhy: "unauthorized" }, fmt),
-      { text: "Token rejected ✕ — re-pair", tone: "bad", needsPairing: true });
+      { text: "Reconnect to the Mac app", tone: "bad", needsPairing: true });
   });
 
   test("unreachable / unknown why → App not reachable ✕ with time, no pairing", () => {
     for (const bridgeWhy of ["unreachable", null, undefined, "something-new"]) {
       assert.deepEqual(saConnectionText({ bridgeOk: false, bridgeAt: AT, bridgeWhy }, fmt),
-        { text: `App not reachable ✕  T${AT}`, tone: "bad", needsPairing: false });
+        { text: `App not reached · T${AT}`, tone: "bad", needsPairing: false });
     }
   });
 
@@ -66,9 +66,9 @@ describe("saConnectionText", () => {
 describe("saLastResultText", () => {
   const base = { at: AT, intent_id: "abc", hostname: "shop.example.test", trigger: "click" };
 
-  test("nothing stored → No request sent yet", () => {
+  test("nothing stored → No catch yet.", () => {
     for (const v of [null, undefined, "", 0, "shown"]) {
-      assert.deepEqual(saLastResultText(v, fmt), { text: "No request sent yet", tone: "neutral" });
+      assert.deepEqual(saLastResultText(v, fmt), { text: "No catch yet.", tone: "neutral" });
     }
   });
 
@@ -76,39 +76,39 @@ describe("saLastResultText", () => {
     const names = { angel: "Angel", papi: "Papi", wizard: "Wizard", mom: "Mom" };
     for (const [id, name] of Object.entries(names)) {
       assert.deepEqual(saLastResultText({ ...base, result: "shown", character: id }, fmt),
-        { text: `Character shown — ${name} · T${AT}`, tone: "ok" });
+        { text: `${name} appeared · T${AT}`, tone: "ok" });
     }
   });
 
   test("shown with an unknown character id → capitalised as-is", () => {
     assert.equal(saLastResultText({ ...base, result: "shown", character: "robot" }, fmt).text,
-      `Character shown — Robot · T${AT}`);
+      `Robot appeared · T${AT}`);
     assert.equal(saLastResultText({ ...base, result: "shown", character: "Robot" }, fmt).text,
-      `Character shown — Robot · T${AT}`);
+      `Robot appeared · T${AT}`);
     assert.equal(saCharacterName("mom"), "Mom");
     assert.equal(saCharacterName("x"), "X");
     assert.equal(saCharacterName(""), "");
     assert.equal(saCharacterName(undefined), "");
   });
 
-  test("shown without a character → Character shown · time", () => {
+  test("shown without a character → Your guardian appeared · time", () => {
     assert.deepEqual(saLastResultText({ ...base, result: "shown" }, fmt),
-      { text: `Character shown · T${AT}`, tone: "ok" });
+      { text: `Your guardian appeared · T${AT}`, tone: "ok" });
   });
 
   test("skipped off → switched off, bad", () => {
     assert.deepEqual(saLastResultText({ ...base, result: "skipped", reason: "off" }, fmt),
-      { text: "Not shown — the app is switched off (turn it on in the menu bar)", tone: "bad" });
+      { text: "Your guardian is off. Turn it on in the Mac menu bar.", tone: "bad" });
   });
 
   test("skipped snoozed → until the parsed snooze_until, bad", () => {
     const until = "2026-09-15T22:43:54Z";
     assert.deepEqual(saLastResultText({ ...base, result: "skipped", reason: "snoozed", snooze_until: until }, fmt),
-      { text: `Not shown — snoozed until T${Date.parse(until)} (Wake up in the menu bar)`, tone: "bad" });
+      { text: `Snoozed until T${Date.parse(until)} · Wake up in the Mac menu bar.`, tone: "bad" });
   });
 
   test("skipped snoozed without (or with an unparsable) snooze_until → snoozed, bad", () => {
-    const want = { text: "Not shown — snoozed (Wake up in the menu bar)", tone: "bad" };
+    const want = { text: "Snoozed · Wake up in the Mac menu bar.", tone: "bad" };
     assert.deepEqual(saLastResultText({ ...base, result: "skipped", reason: "snoozed" }, fmt), want);
     assert.deepEqual(saLastResultText({ ...base, result: "skipped", reason: "snoozed", snooze_until: "soon" }, fmt), want);
     assert.deepEqual(saLastResultText({ ...base, result: "skipped", reason: "snoozed", snooze_until: 5 }, fmt), want);
@@ -116,20 +116,20 @@ describe("saLastResultText", () => {
 
   test("skipped busy → already on screen, neutral", () => {
     assert.deepEqual(saLastResultText({ ...base, result: "skipped", reason: "busy" }, fmt),
-      { text: "Not shown — a character was already on screen", tone: "neutral" });
+      { text: "Your guardian was already on screen.", tone: "neutral" });
   });
 
   test("skipped throttled → too soon, with the wait when known", () => {
     assert.deepEqual(saLastResultText({ ...base, result: "skipped", reason: "throttled", retry_in_s: 5 }, fmt),
-      { text: "Not shown — too soon after the last catch (wait 5 s)", tone: "neutral" });
+      { text: "Taking a breather after the last catch (wait 5 s)", tone: "neutral" });
     assert.deepEqual(saLastResultText({ ...base, result: "skipped", reason: "throttled" }, fmt),
-      { text: "Not shown — too soon after the last catch", tone: "neutral" });
+      { text: "Taking a breather after the last catch", tone: "neutral" });
     assert.equal(saLastResultText({ ...base, result: "skipped", reason: "throttled", retry_in_s: "5" }, fmt).text,
-      "Not shown — too soon after the last catch", "a non-number wait is not shown");
+      "Taking a breather after the last catch", "a non-number wait is not shown");
   });
 
   test("unknown (older app), or a result/reason this sensor doesn't know → update the app", () => {
-    const want = { text: "App answered, but didn't say what it did — update the app", tone: "neutral" };
+    const want = { text: "Connected to an older app. Update it for catch details.", tone: "neutral" };
     assert.deepEqual(saLastResultText({ ...base, result: "unknown" }, fmt), want);
     assert.deepEqual(saLastResultText({ ...base, result: "skipped" }, fmt), want);
     assert.deepEqual(saLastResultText({ ...base, result: "skipped", reason: "tired" }, fmt), want);
@@ -179,17 +179,17 @@ describe("saVersionHint", () => {
   });
 
   test("app older → update the app", () => {
-    assert.equal(saVersionHint("0.6.0", "0.5.0"), "Sensor v0.6.0 · App v0.5.0 — update the app");
-    assert.equal(saVersionHint("1.0.0", "0.9.9"), "Sensor v1.0.0 · App v0.9.9 — update the app");
-    assert.equal(saVersionHint("0.10.0", "0.9.0"), "Sensor v0.10.0 · App v0.9.0 — update the app",
+    assert.equal(saVersionHint("0.6.0", "0.5.0"), "Browser v0.6.0 · App v0.5.0 — update the app");
+    assert.equal(saVersionHint("1.0.0", "0.9.9"), "Browser v1.0.0 · App v0.9.9 — update the app");
+    assert.equal(saVersionHint("0.10.0", "0.9.0"), "Browser v0.10.0 · App v0.9.0 — update the app",
       "numeric, not lexical");
   });
 
   test("sensor older → reload the extension", () => {
     assert.equal(saVersionHint("0.5.0", "0.6.0"),
-      "Sensor v0.5.0 · App v0.6.0 — reload the extension at chrome://extensions");
+      "Browser v0.5.0 · App v0.6.0 — reload the extension at chrome://extensions");
     assert.equal(saVersionHint("0.9.0", "1.0.0"),
-      "Sensor v0.9.0 · App v1.0.0 — reload the extension at chrome://extensions");
+      "Browser v0.9.0 · App v1.0.0 — reload the extension at chrome://extensions");
   });
 });
 

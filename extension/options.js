@@ -1,20 +1,10 @@
-// Spending Angel — options page. Pairing + full site-list management.
-//
-// Pairing: the one secret in the whole system is the bridge token the macOS
-// app mints and shows under PAIR SENSOR; the user pastes it here and the
-// service worker sends it as a bearer credential. The status line is
-// re-rendered live from storage; the input field is only ever cleared by a
-// successful save. Listed mode: an allowlist of sites; each needs a
-// host-permission grant (a Chrome gesture) before the sensor can actually run
-// there. Everywhere mode: a blocklist of sites to leave alone. All local —
-// nothing is sent anywhere.
-//
-// Round 3: this page is the main status surface. The "App" card shows the
-// connection, what the app did with the last request, and the version pair —
-// the wording comes from status.js, shared with the popup, and re-renders live
-// from storage so "Simulate intent" here shows both lines change.
+// Spending Angel — browser Settings. Setup is expanded until confirmed;
+// site controls remain visible, and diagnostics live in a closed disclosure.
+// The pairing token and the existing five-field bridge contract stay local.
 
 const $ = (id) => document.getElementById(id);
+let setupWasRequired = null;
+
 const fmtTime = (ms) => new Date(ms).toLocaleTimeString();
 
 async function state() {
@@ -23,17 +13,16 @@ async function state() {
 
 // ---- Pairing (NATIVE-01) ----------------------------------------------------
 
-const TOKEN_STATE_NONE        = "Not paired — the app will not answer until you paste the token.";
-const TOKEN_STATE_SAVED       = (tail) => `Token saved — waiting for the app to confirm (…${tail}). Try "Simulate intent" in the popup.`;
-const TOKEN_STATE_UNREACHABLE = (tail) => `Token saved — the app isn't answering yet (…${tail}). Is Spending Angel running?`;
-const TOKEN_STATE_PAIRED      = (tail) => `Paired — token ends in …${tail}`;
-const TOKEN_STATE_REJECTED    = (tail) => `Token rejected — copy it again from PAIR SENSOR (…${tail})`;
-const TOKEN_JUNK_MSG          = "hmm, that doesn't look like a token (64 hex characters)";
+const TOKEN_STATE_NONE        = "Copy a connection code from the Mac app to get started.";
+const TOKEN_STATE_SAVED       = (tail) => `Code saved — waiting for the app to confirm (…${tail}). Choose “Test connection” above.`;
+const TOKEN_STATE_UNREACHABLE = (tail) => `Code saved — the app isn't answering yet (…${tail}). Is Spending Angel running?`;
+const TOKEN_STATE_PAIRED      = (tail) => `Connected — code ends in …${tail}`;
+const TOKEN_STATE_REJECTED    = (tail) => `Code not recognised — copy it again from the Mac app’s Settings (…${tail})`;
+const TOKEN_JUNK_MSG          = "That code looks incomplete. Copy the full code from the Mac app.";
 
-// Which pairing line to show for a stored token. "Paired" is a claim the app
-// has to earn: only a real 200 (bridgeOk === true) unlocks it. A save resets
+// A saved code is not a confirmed connection: the app must answer first. A save resets
 // the bridge keys to null, so a fresh save always reads as "waiting". An app
-// that stopped answering keeps the "Token saved" prefix (the token is fine)
+// that stopped answering keeps the "Code saved" prefix (the token is fine)
 // and says what to check instead of inviting a retry that fails the same way.
 function tokenStateText(bridgeOk, bridgeWhy, tail) {
   if (bridgeOk === true) return TOKEN_STATE_PAIRED(tail);
@@ -47,11 +36,17 @@ async function renderToken() {
     await chrome.storage.local.get({ saBridgeToken: "", bridgeOk: null, bridgeWhy: null });
   const token = saNormalizeBridgeToken(saBridgeToken);
   const input = $("token-input");
+  const needsSetup = !token || bridgeOk === null || bridgeWhy === "unauthorized";
+  if (needsSetup) $("pair-card").open = true;
+  else if (setupWasRequired !== false && !input.value) $("pair-card").open = false;
+  setupWasRequired = needsSetup;
+  $("pair-summary").textContent = !token ? "One-time setup" : bridgeOk === true ? "Connected" : "Check connection";
+  $("disconnect").hidden = !token;
   // Placeholder + status only. The stored token is only ever shown masked, via
   // the placeholder; the field's value belongs to the user (a paste in
   // progress) and is cleared by saveToken on success, never by a re-render.
   if (!token) {
-    input.placeholder = "paste the 64-character token";
+    input.placeholder = "Paste your connection code";
     $("token-state").textContent = TOKEN_STATE_NONE;
     return;
   }
@@ -77,8 +72,8 @@ async function saveToken(raw) {
     return;
   }
   // One write: the new token AND a full reset of the bridge status, so the
-  // popup reads "Not tried yet" (not a stale "App not reachable") until the
-  // next intent or "Simulate intent" proves the pairing.
+  // popup reads "Connection not checked yet" (not a stale "App not reachable") until the
+  // next intent or "Test connection" proves the pairing.
   await chrome.storage.local.set({ saBridgeToken: t, bridgeOk: null, bridgeAt: null, bridgeWhy: null });
   $("token-input").value = "";
   await renderToken();
@@ -86,7 +81,7 @@ async function saveToken(raw) {
 
 // ---- App status card (Round 3) ---------------------------------------------
 
-// Tone → class on a .kv value ("neutral" is no class at all).
+// Tone is shared with the popup; neutral uses the surrounding text color.
 function setKv(id, { text, tone }) {
   const el = $(id);
   el.textContent = text;
@@ -100,12 +95,13 @@ async function renderApp() {
   const sensor = chrome.runtime.getManifest().version;
   setKv("app-connection", saConnectionText(s, fmtTime));
   setKv("app-last-result", saLastResultText(s.lastResult, fmtTime));
+  $("app-last-result").hidden = !s.lastResult;
   // The app's version only arrives with a Round 3 body; before that, say so
   // instead of pretending.
   setKv("app-versions", {
     text: typeof s.appVersion === "string"
-      ? `Sensor v${sensor} · App v${s.appVersion}`
-      : `Sensor v${sensor} · App version not seen yet`,
+      ? `Browser v${sensor} · App v${s.appVersion}`
+      : `Browser v${sensor} · App version not seen yet`,
     tone: "neutral",
   });
   const hint = saVersionHint(sensor, s.appVersion);
@@ -114,8 +110,7 @@ async function renderApp() {
   $("app-version-hint").hidden = hint === null;
 }
 
-// Same payload and same path as the popup's Simulate button: store the intent
-// and hand it to the service worker, which forwards it to the app.
+// Test connection follows the real forwarding path and can display a catch.
 async function simulateIntent() {
   const payload = saSimulatedIntent(Date.now());
   await chrome.storage.local.set({ lastIntent: payload });
@@ -130,8 +125,8 @@ async function renderMode() {
   $("listed-card").hidden = saMode !== "listed";
   $("everywhere-card").hidden = saMode !== "everywhere";
   $("mode-note").textContent = saMode === "everywhere"
-    ? "The Angel is watching every http/https site you open, except the paused ones."
-    : "The Angel only runs on the sites you've enabled below — nothing else.";
+    ? "Paused sites stay quiet, including tabs you already have open."
+    : "You can also watch or pause a site from the Chrome toolbar.";
 }
 
 async function setMode(mode) {
@@ -166,11 +161,11 @@ async function renderListed() {
 
     const tag = document.createElement("span");
     tag.className = "tag " + (granted ? "on" : "pending");
-    tag.textContent = granted ? "watching" : "pending";
+    tag.textContent = granted ? "Watching" : "Needs access";
     li.appendChild(tag);
 
     if (!granted) {
-      const grant = mkBtn("Grant", "link-btn grant", async () => {
+      const grant = mkBtn("Allow", "link-btn grant", async () => {
         await chrome.permissions.request({ origins });
         await renderListed();
       });
@@ -256,6 +251,13 @@ function mkBtn(label, cls, onClick) {
   return b;
 }
 
+async function renderDiagnostics() {
+  const { lastIntent, saLogs } = await chrome.storage.local.get({ lastIntent: null, saLogs: [] });
+  $("last-intent").textContent = lastIntent ? JSON.stringify(lastIntent, null, 2) : "No activity yet.";
+  $("events").textContent = Array.isArray(saLogs) && saLogs.length ? saLogs.slice(-8).filter((l) => l && typeof l === "object").map((l) =>
+    `${l.ts ? l.ts.slice(11, 19) : ""} ${l.event} ${l.msg}`).join("\n") : "No events yet.";
+}
+
 async function renderAll() {
   await renderToken();
   await renderApp();
@@ -266,25 +268,32 @@ async function renderAll() {
 
 document.addEventListener("DOMContentLoaded", async () => {
   await renderAll();
+  await renderDiagnostics();
 
-  $("token-form").addEventListener("submit", (e) => { e.preventDefault(); saveToken($("token-input").value); });
+  $("token-form").addEventListener("submit", (e) => { e.preventDefault(); if (!$("token-input").value.trim()) {
+    $("token-state").textContent = "Paste a code first, or choose Disconnect below.";
+    return;
+  }
+  saveToken($("token-input").value).catch(() => { $("token-state").textContent = "Couldn’t save the code. Try again."; }); });
   document.querySelectorAll('input[name="mode"]').forEach((r) => {
     r.addEventListener("change", () => setMode(r.value));
   });
   $("add-form").addEventListener("submit", (e) => { e.preventDefault(); addSite($("add-input").value); });
   $("pause-form").addEventListener("submit", (e) => { e.preventDefault(); addBlocked($("pause-input").value); });
   $("enable-all").addEventListener("click", enableAll);
+  $("disconnect").addEventListener("click", () => { saveToken("").catch(() => {}); });
   $("app-simulate").addEventListener("click", () => { simulateIntent().catch(() => {}); });
 
   chrome.permissions.onAdded.addListener(renderListed);
   chrome.permissions.onRemoved.addListener(renderListed);
 
-  // Live pairing status: "Simulate intent" in the popup (or the next real
-  // intent) flips this page from "Token saved — waiting…" to "Paired — …"
-  // without a reload. renderToken never touches the input's value, so a paste
-  // in progress survives the flip.
+  // Live status never erases a paste in progress.
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
+    if (changes.saMode) renderMode().catch(() => {});
+    if (changes.saMode || changes.saAllowlist) renderListed().catch(() => {});
+    if (changes.saMode || changes.saBlocklist) renderBlocked().catch(() => {});
+    if (changes.lastIntent || changes.saLogs) renderDiagnostics().catch(() => {});
     // Contained: a storage that rejects while the page is tearing down must
     // not surface as an unhandled rejection (same pattern as the worker).
     if (changes.saBridgeToken || changes.bridgeOk || changes.bridgeWhy) renderToken().catch(() => {});

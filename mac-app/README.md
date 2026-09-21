@@ -3,7 +3,7 @@
 The brain and the performer. A menu-bar app that owns the goal, the cast, on/off,
 snooze and the monthly stat, and fires the **catch**: a full-screen overlay where a
 character ambushes you with a voice line. Real catches arrive from the Chrome
-Sensor (`../extension/`) over a paired localhost bridge; a **▶ test** link in the
+Sensor (`../extension/`) over a paired localhost bridge; a **Try character** button in the
 dropdown fires one by hand.
 
 ## Install
@@ -49,15 +49,11 @@ up — the install script kills it.
 
 ## The dropdown
 
-Top to bottom (pixel-game theme — `Theme`, `.pixel()` font, `PixelFrame` corners):
+The everyday panel keeps the goal, four available characters, **Surprise me**, and a compact current-month catch message. **Turn off / Turn on** and **Snooze 1h / Wake up** share a two-column row. **Try character** plays a catch regardless of on-duty state and counts it only when admitted.
 
-- **SAVING FOR** — the goal, free text. Blank falls back to the generic line.
-- **PICK YOUR GUARDIAN** — The Angel, Dominican Papi, The Wizard, Asian Mom (four "?" slots are reserved for future cast).
-- **SHAKE IT UP** — random character per catch, no immediate repeats.
-- **Stat box** — the character's brag over this calendar month's catch count ("I've stopped you 3 times. You're welcome.") plus a days-clean streak. Derived from the month containing *now*, so the count reads 0 on the 1st even before the first catch.
-- **PAIR SENSOR** — the pairing token with a **COPY** button. Paste it into the extension's Options → Pair with the app. Regenerating (same row) mints a new one and invalidates the old pairing until you paste again.
-- **SPENDING ANGEL IS ON / OFF** — master switch. **SNOOZE 1 HR / WAKE UP** — a nap. Real intents respect both.
-- **▶ test** / **v0.6.0** / **quit** — the test fires a catch regardless of on-duty state (and counts toward the stat if it actually plays); the version in the middle is `AppInfo.version`, the same value the bridge reports.
+The gear opens a separate Settings view with Back navigation. **Browser connection** masks the code by default and offers **Show / Hide**, **Copy code**, and **Replace connection code…** (with confirmation before disconnecting the browser). Version information and Quit live here too. No connection code or empty character slots occupy the everyday panel.
+
+The dropdown uses readable system text, a flat navy/mint palette, and small pixel accents. Character artwork and overlay behavior are unchanged.
 
 ## The bridge
 
@@ -74,7 +70,7 @@ Content-Type: application/json
 Every response has `Connection: close` and no CORS headers (the Sensor's service worker
 has `host_permissions` for `127.0.0.1`, so it needs none; a web page therefore can't
 read anything back). `200` and `429` carry a small JSON body — the app says what it did,
-so the Sensor can show "Character shown — Mom" instead of only "Connected"; every other
+so the Sensor can show "Mom appeared" separately from the last connection time; every other
 status has an empty body (`Content-Length: 0`, no `Content-Type`).
 
 **Response contract** (`BridgeServer.responseBody` / `throttledBody`; keys sorted, no
@@ -113,7 +109,7 @@ Caps: headers 8 192 bytes, body 1 000 000 bytes, `id` 128 bytes, `hostname` 1–
 (UTF-8), 10 s per connection. Logged request fields are clipped to 256 bytes.
 
 **Pairing.** On first launch `Store` generates a token (32 random bytes → 64 lowercase
-hex chars), keeps it in `UserDefaults` (`bridgeToken`), and shows it under PAIR SENSOR.
+hex chars), keeps it in `UserDefaults` (`bridgeToken`), and keeps it under Settings → Browser connection.
 The server reads it per request and compares in constant time, so regenerating takes
 effect immediately, no restart. The token is never written to the logs (at most its
 last 4 characters, as `token_tail`).
@@ -197,7 +193,7 @@ module. `swift build --package-path mac-app` works with either.
 Poking the bridge by hand:
 
 ```bash
-TOKEN=<paste from PAIR SENSOR>
+TOKEN=<paste from Settings → Browser connection>
 curl -i -X POST http://127.0.0.1:17865/intent \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"type":"checkout_intent","trigger":"simulated","hostname":"example.com","ts":0}'
@@ -231,7 +227,7 @@ mac-app/
 │   ├── CatchRunner.swift          decide (off/snoozed/busy/shown) · admit → record → log
 │   ├── OverlayController.swift    the NSPanel + catch-sequence timing
 │   ├── CatchView.swift            the SwiftUI performance (character + bubble + animation)
-│   ├── DropdownView.swift         the menu-bar "brain" (goal, cast, stat, PAIR SENSOR, controls)
+│   ├── DropdownView.swift         the menu-bar "brain" (goal, cast, stat, controls, separate Settings)
 │   ├── Store.swift                persisted state: goal, cast, on/off, snooze, stat, token
 │   ├── Characters.swift           the cast: names, brags, streak lines
 │   ├── AudioPlayer.swift          full-volume clip playback + captions
